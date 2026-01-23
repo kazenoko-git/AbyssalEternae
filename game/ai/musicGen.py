@@ -1,161 +1,142 @@
-import os
-import json
+from pathlib import Path
 import hashlib
-import sqlite3
-import threading
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional, List
-from pydub import AudioSegment
+import json
 import random
+from dataclasses import dataclass
+from typing import List, Dict, Optional
 
-DB_PATH = "game/db/rifted.db"
-STEM_DIR = "game/audio/music/stems"
-OUTPUT_DIR = "game/audio/music/generated"
+from pydub import AudioSegment
 
-BASE_BPM = 60
-TRACK_BARS = 8  # loop length
+# =========================
+# PATHS
+# =========================
 
+BASE = Path(__file__).resolve().parents[2]  # game/
+MUSIC_DIR = BASE / "audio" / "music"
+STEM_DIR = MUSIC_DIR / "stems"
+TRACK_DIR = MUSIC_DIR / "generated" / "tracks"
+
+TRACK_DIR.mkdir(parents=True, exist_ok=True)
+
+# =========================
+# DATA MODELS
+# =========================
 
 @dataclass(frozen=True)
 class MusicContext:
     biome: str
-    dimension_theme: str
-    narrative_tone: str
-    danger_level: float
-    player_state: str
+    danger: float
+    narrative: str
+    dimension: str
     seed: int
 
 
+# =========================
+# TRACK PROFILES
+# =========================
+
+TRACK_PROFILES: Dict[str, Dict] = {
+    "exploration": {
+        "required": ["strings_pad_mid", "choir_airy"],
+        "optional": ["piano_sparse", "harp_pluck", "strings_pad_high"],
+        "max_layers": 4
+    },
+    "tension": {
+        "required": ["strings_pad_low", "strings_pulse"],
+        "optional": ["brass_sustain_low", "choir_pad"],
+        "max_layers": 4
+    },
+    "combat": {
+        "required": ["strings_pad_low", "brass_sustain_mid"],
+        "optional": ["strings_tremolo", "perc_soft_pulse"],
+        "max_layers": 5
+    },
+    "boss": {
+        "required": ["strings_pad_low", "brass_sustain_low"],
+        "optional": ["strings_tremolo", "perc_taiko_low", "choir_pad"],
+        "max_layers": 6
+    }
+}
+
+# =========================
+# MUSIC GENERATOR
+# =========================
+
 class MusicGenerator:
     def __init__(self):
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        self._init_db()
+        self.stems = self._index_stems()
 
-    # ---------------- DB ----------------
+    def _index_stems(self) -> Dict[str, Path]:
+        stems = {}
+        for wav in STEM_DIR.glob("*.wav"):
+            key = wav.name.split("_60bpm")[0]
+            stems[key] = wav
+        return stems
 
-    def _init_db(self):
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS music_tracks (
-            context_hash TEXT PRIMARY KEY,
-            audio_path TEXT,
-            metadata TEXT,
-            created_at TEXT
-        )
-        """)
-        conn.commit()
-        conn.close()
+    # -------------------------
+    # PUBLIC API
+    # -------------------------
 
-    # ------------- PUBLIC API -------------
+    def get_track(self, context: MusicContext) -> Path:
+        profile = self._select_profile(context)
+        track_hash = self._hash(context, profile)
 
-    def request_music(self, context: MusicContext) -> Optional[str]:
-        context_hash = self._hash_context(context)
+        output = TRACK_DIR / f"{track_hash}.ogg"
+        if output.exists():
+            return output
 
-        cached = self._fetch(context_hash)
-        if cached:
-            return cached
+        self._render_track(profile, context, output)
+        return output
 
-        threading.Thread(
-            target=self._generate_track,
-            args=(context, context_hash),
-            daemon=True
-        ).start()
+    # -------------------------
+    # PROFILE SELECTION
+    # -------------------------
 
-        return None  # fallback music should play
+    def _select_profile(self, context: MusicContext) -> Dict:
+        if context.danger > 0.8:
+            return TRACK_PROFILES["boss"]
+        if context.danger > 0.5:
+            return TRACK_PROFILES["combat"]
+        if context.danger > 0.25:
+            return TRACK_PROFILES["tension"]
+        return TRACK_PROFILES["exploration"]
 
-    # ------------- GENERATION -------------
+    # -------------------------
+    # RENDERING
+    # -------------------------
 
-    def _generate_track(self, context: MusicContext, context_hash: str):
+    def _render_track(self, profile: Dict, context: MusicContext, output: Path):
         random.seed(context.seed)
 
-        layers = self._select_layers(context)
-        track = self._mix_layers(layers)
+        layers: List[str] = list(profile["required"])
+        optional = profile["optional"].copy()
+        random.shuffle(optional)
 
-        output_path = os.path.join(OUTPUT_DIR, f"{context_hash}.ogg")
-        track.export(output_path, format="ogg")
+        while len(layers) < profile["max_layers"] and optional:
+            layers.append(optional.pop())
 
-        self._store(context_hash, output_path, layers)
+        mix: Optional[AudioSegment] = None
 
-    # ------------- LAYERS -------------
+        for name in layers:
+            stem = self.stems.get(name)
+            if not stem:
+                continue
 
-    def _select_layers(self, context: MusicContext) -> List[str]:
-        """
-        AI-replaceable logic.
-        Currently rule-based but GOOD.
-        """
-        available = os.listdir(STEM_DIR)
+            audio = AudioSegment.from_file(stem)
+            audio = audio - 6  # headroom
 
-        layers = []
+            mix = audio if mix is None else mix.overlay(audio)
 
-        # Always pad
-        layers.append(self._pick(available, "strings"))
+        mix.export(output, format="ogg")
 
-        if context.danger_level > 0.3:
-            layers.append(self._pick(available, "brass"))
+    # -------------------------
+    # UTILS
+    # -------------------------
 
-        if context.narrative_tone in ("grim", "ancient"):
-            layers.append(self._pick(available, "choir"))
+    def _hash(self, context: MusicContext, profile: Dict) -> str:
+        raw = json.dumps({
+            "context": context.__dict__,
+            "profile": profile
+        }, sort_keys=True)
 
-        if context.danger_level > 0.6:
-            layers.append(self._pick(available, "percussion"))
-
-        return layers
-
-    def _pick(self, files, keyword):
-        choices = [f for f in files if keyword in f]
-        return os.path.join(STEM_DIR, random.choice(choices))
-
-    # ------------- MIXING -------------
-
-    def _mix_layers(self, layers: List[str]) -> AudioSegment:
-        base = None
-
-        for path in layers:
-            audio = AudioSegment.from_file(path)
-
-            if base is None:
-                base = audio
-            else:
-                base = base.overlay(audio)
-
-        # Force exact loop length
-        loop_length_ms = int((TRACK_BARS * 4 * 60 / BASE_BPM) * 1000)
-        base = base[:loop_length_ms]
-
-        return base
-
-    # ------------- CACHE -------------
-
-    def _store(self, context_hash, path, layers):
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("""
-        INSERT OR REPLACE INTO music_tracks
-        VALUES (?, ?, ?, ?)
-        """, (
-            context_hash,
-            path,
-            json.dumps({"layers": layers}),
-            datetime.utcnow().isoformat()
-        ))
-        conn.commit()
-        conn.close()
-
-    def _fetch(self, context_hash) -> Optional[str]:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT audio_path FROM music_tracks WHERE context_hash = ?",
-            (context_hash,)
-        )
-        row = cur.fetchone()
-        conn.close()
-        return row[0] if row else None
-
-    # ------------- UTILS -------------
-
-    def _hash_context(self, context: MusicContext) -> str:
-        raw = json.dumps(context.__dict__, sort_keys=True)
         return hashlib.sha256(raw.encode()).hexdigest()
