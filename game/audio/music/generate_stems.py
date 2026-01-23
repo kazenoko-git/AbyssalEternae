@@ -9,7 +9,7 @@ import fluidsynth
 
 BASE = Path(__file__).resolve().parent
 STEM_DIR = BASE / "stems"
-SOUNDFONT = BASE / "soundfonts" / "FluidR3_GM.sf2"
+SOUNDFONT = BASE / "soundfonts" / "arachno.sf2"
 
 STEM_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +50,6 @@ def render_stem(name, notes, program, velocity=70, percussion=False):
 
     fs.set_reverb(False)
     fs.set_chorus(False)
-    fs.set_gain(0.3)
 
     sfid = fs.sfload(str(SOUNDFONT))
     if sfid == -1:
