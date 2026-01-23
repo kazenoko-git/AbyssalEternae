@@ -27,9 +27,32 @@ FRAMES = int(SECONDS * SAMPLE_RATE)
 # MUSICAL DATA
 # =========================
 
-CHORD_E_MINOR = [52, 55, 59]
-LOW_E_MINOR = [40, 43]
-HIGH_E_MINOR = [64, 67, 71]
+CHORDS = {
+    "Em": [52, 55, 59],
+    "C":  [48, 52, 55],
+    "G":  [55, 59, 62],
+    "D":  [50, 54, 57],
+}
+
+LOW = {
+    "Em": [40, 43],
+    "C":  [36, 40],
+    "G":  [43, 47],
+    "D":  [38, 42],
+}
+
+HIGH = {
+    "Em": [64, 67, 71],
+    "C":  [60, 64, 67],
+    "G":  [67, 71, 74],
+    "D":  [62, 66, 69],
+}
+
+# Simple melodic motifs (1–2 bars feel)
+MOTIFS = {
+    "melancholy": lambda chord: [chord[0], chord[1], chord[2], chord[1]],
+    "heroic":     lambda chord: [chord[0], chord[2], chord[1], chord[2]],
+}
 
 GM = {
     "strings": 48,
@@ -47,7 +70,6 @@ GM = {
 
 def render_stem(name, notes, program, velocity=70, percussion=False):
     fs = fluidsynth.Synth(samplerate=SAMPLE_RATE)
-
     fs.set_reverb(False)
     fs.set_chorus(False)
 
@@ -58,10 +80,10 @@ def render_stem(name, notes, program, velocity=70, percussion=False):
     channel = 9 if percussion else 0
     fs.program_select(channel, sfid, 0, program)
 
+    audio = np.zeros((FRAMES, 2), dtype=np.float32)
+
     for note in notes:
         fs.noteon(channel, note, velocity)
-
-    audio = np.zeros((FRAMES, 2), dtype=np.float32)
 
     idx = 0
     chunk = 1024
@@ -86,10 +108,8 @@ def render_stem(name, notes, program, velocity=70, percussion=False):
     if peak > 0:
         audio *= 0.8 / peak
 
-    out = STEM_DIR / f"{name}_60bpm_em.wav"
-    sf.write(out, audio, SAMPLE_RATE)
-    print(f"Generated: {out.name}")
-
+    sf.write(STEM_DIR / name, audio, SAMPLE_RATE)
+    print(f"Generated: {name}")
 
 # =========================
 # GENERATE ALL STEMS
@@ -97,28 +117,39 @@ def render_stem(name, notes, program, velocity=70, percussion=False):
 
 if __name__ == "__main__":
 
-    # Pads
-    render_stem("strings_pad_low", LOW_E_MINOR, GM["strings"])
-    render_stem("strings_pad_mid", CHORD_E_MINOR, GM["strings"])
-    render_stem("strings_pad_high", HIGH_E_MINOR, GM["strings"])
-    render_stem("choir_pad", CHORD_E_MINOR, GM["choir"])
+    for chord, notes in CHORDS.items():
+        print(f"\n=== Generating stems for {chord} ===")
 
-    # Motion
-    render_stem("strings_tremolo", CHORD_E_MINOR, GM["tremolo"])
-    render_stem("strings_pulse", CHORD_E_MINOR, GM["strings"], velocity=60)
-    render_stem("choir_airy", CHORD_E_MINOR, GM["choir"], velocity=50)
+        # Pads
+        render_stem(f"strings_pad_low_{chord}.wav", LOW[chord], GM["strings"])
+        render_stem(f"strings_pad_mid_{chord}.wav", notes, GM["strings"])
+        render_stem(f"strings_pad_high_{chord}.wav", HIGH[chord], GM["strings"])
+        render_stem(f"choir_pad_{chord}.wav", notes, GM["choir"])
 
-    # Brass
-    render_stem("brass_sustain_low", LOW_E_MINOR, GM["brass"])
-    render_stem("brass_sustain_mid", CHORD_E_MINOR, GM["brass"])
-    render_stem("horns_warm", CHORD_E_MINOR, GM["horns"])
+        # Motion
+        render_stem(f"strings_tremolo_{chord}.wav", notes, GM["tremolo"], velocity=60)
+        render_stem(f"strings_pulse_{chord}.wav", notes, GM["strings"], velocity=55)
+        render_stem(f"choir_airy_{chord}.wav", notes, GM["choir"], velocity=45)
 
-    # Piano / Harp
-    render_stem("piano_low", LOW_E_MINOR, GM["piano"], velocity=55)
-    render_stem("piano_sparse", CHORD_E_MINOR, GM["piano"], velocity=45)
-    render_stem("harp_pluck", CHORD_E_MINOR, GM["harp"], velocity=60)
+        # Brass
+        render_stem(f"brass_sustain_low_{chord}.wav", LOW[chord], GM["brass"])
+        render_stem(f"horns_warm_{chord}.wav", notes, GM["horns"])
 
-    # Percussion
-    render_stem("perc_soft_pulse", [36], 0, percussion=True)
-    render_stem("perc_taiko_low", [35], 0, percussion=True)
-    render_stem("perc_ticks_high", [42], 0, percussion=True)
+        # Piano / Harp
+        render_stem(f"piano_sparse_{chord}.wav", notes, GM["piano"], velocity=45)
+        render_stem(f"harp_pluck_{chord}.wav", notes, GM["harp"], velocity=60)
+
+        # Motifs (MELODY)
+        for motif, fn in MOTIFS.items():
+            motif_notes = fn(notes)
+            render_stem(
+                f"motif_{motif}_{chord}.wav",
+                motif_notes,
+                GM["strings"],
+                velocity=70
+            )
+
+    # Percussion (unchorded)
+    render_stem("perc_soft_pulse.wav", [36], 0, percussion=True)
+    render_stem("perc_taiko_low.wav", [35], 0, percussion=True)
+    render_stem("perc_ticks_high.wav", [42], 0, percussion=True)
