@@ -112,12 +112,15 @@ class ChunkManager:
         Terrain = Entity(
             parent=Parent,
             model=Mesh,
-            color=color.green,
             collider='mesh'
         )
 
+        Terrain.color = color.green
+
+        Terrain.ignore_lighting = False
+
         self.LoadedChunks[(ChunkX, ChunkZ)] = Parent
-        self.Generating.remove((ChunkX, ChunkZ))
+        self.Generating.discard((ChunkX, ChunkZ))
 
     # =======================
 

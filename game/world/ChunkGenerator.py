@@ -1,5 +1,7 @@
-import random
 
+
+import random
+from noise import pnoise2
 from game.world.ChunkData import ChunkData
 from game.world.BiomeSystem import BiomeSystem
 from game.world.StructureSpawner import StructureSpawner
@@ -22,8 +24,15 @@ class ChunkGenerator:
             b_row = []
 
             for z in range(ChunkGenerator.CHUNK_SIZE):
+                scale = 0.08
+                amplitude = 12
 
-                Height = random.randint(2, 8)
+                nx = (ChunkX * 16 + x) * scale
+                nz = (ChunkZ * 16 + z) * scale
+
+                Height = int(pnoise2(nx, nz) * amplitude) + 8
+                if Height < 1: Height = 1
+
                 Biome = BiomeSystem.GetBiome(
                     ChunkX * 16 + x,
                     ChunkZ * 16 + z,

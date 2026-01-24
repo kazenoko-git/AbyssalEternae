@@ -1,3 +1,8 @@
+from panda3d.core import loadPrcFileData
+
+loadPrcFileData("", "gl-version 2 1")
+loadPrcFileData("", "glsl-version 120")
+
 from ursina import *
 from game.core.GameManager import GameManager
 from game.core.GameState import GameState
@@ -17,8 +22,11 @@ def PlayerMove():
 
 
 app = Ursina()
-DirectionalLight(y=2, z=3)
-AmbientLight(color=color.rgba(100, 100, 100, 255))
+window.vsync = True
+window.borderless = False
+window.fullscreen = False
+DirectionalLight(direction=(0.4, -1, 0.4))
+
 
 Player = Entity(
     model='cube',

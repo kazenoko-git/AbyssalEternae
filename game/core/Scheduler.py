@@ -14,3 +14,4 @@ class Scheduler:
                 print(f"[Scheduler] Task error: {e}")
 
             cls._Tasks.remove(Task)
+
