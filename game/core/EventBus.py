@@ -1,5 +1,6 @@
 class EventBus:
     _Queue = []
+    def __init__(self): return
 
     @classmethod
     def Emit(cls, Event):

@@ -1,7 +1,7 @@
-from EventBus import EventBus
-from Scheduler import Scheduler
-from GameState import GameState
-from ServiceLocator import ServiceLocator
+from game.core.EventBus import EventBus
+from game.core.Scheduler import Scheduler
+from game.core.GameState import GameState
+from game.core.ServiceLocator import ServiceLocator
 
 import time
 

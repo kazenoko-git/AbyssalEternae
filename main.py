@@ -1,7 +1,6 @@
 from ursina import *
 
-from core.GameManager import GameManager
-
+from game.core.GameManager import GameManager
 
 app = Ursina()
 

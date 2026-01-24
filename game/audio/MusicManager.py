@@ -1,4 +1,4 @@
-from core.GameState import GameState
+from game.core.GameState import GameState
 
 
 class MusicManager:
