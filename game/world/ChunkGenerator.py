@@ -1,5 +1,8 @@
 import random
+
 from game.world.ChunkData import ChunkData
+from game.world.BiomeSystem import BiomeSystem
+from game.world.StructureSpawner import StructureSpawner
 
 
 class ChunkGenerator:
@@ -11,22 +14,37 @@ class ChunkGenerator:
 
         random.seed(f"{Seed}_{ChunkX}_{ChunkZ}")
 
-        HeightMap = []
+        Heights = []
+        BiomeMap = []
 
         for x in range(ChunkGenerator.CHUNK_SIZE):
-            Row = []
+            h_row = []
+            b_row = []
+
             for z in range(ChunkGenerator.CHUNK_SIZE):
 
-                # TEMP HEIGHT LOGIC (Replace with Perlin later)
-                Height = random.randint(1, 6)
+                Height = random.randint(2, 8)
+                Biome = BiomeSystem.GetBiome(
+                    ChunkX * 16 + x,
+                    ChunkZ * 16 + z,
+                    Seed
+                )
 
-                Row.append(Height)
+                h_row.append(Height)
+                b_row.append(Biome)
 
-            HeightMap.append(Row)
+            Heights.append(h_row)
+            BiomeMap.append(b_row)
+
+        Structures = StructureSpawner.GenerateStructures(
+            ChunkX, ChunkZ, Seed
+        )
 
         return ChunkData(
-            ChunkX=ChunkX,
-            ChunkZ=ChunkZ,
-            HeightMap=HeightMap,
-            Seed=Seed
+            ChunkX,
+            ChunkZ,
+            Heights,
+            BiomeMap,
+            Structures,
+            Seed
         )

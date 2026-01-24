@@ -1,16 +1,17 @@
 from ursina import Entity, Vec3, destroy, color
-
 import threading
 
 from game.world.ChunkGenerator import ChunkGenerator
+from game.world.TerrainMeshBuilder import TerrainMeshBuilder
 from game.core.Scheduler import Scheduler
 from game.core.GameState import GameState
+from game.db.ChunkCache import ChunkCache
 
 
 class ChunkManager:
 
     CHUNK_SIZE = 16
-    VIEW_DISTANCE = 2  # radius in chunks
+    VIEW_DISTANCE = 2
 
     def __init__(self):
 
@@ -19,74 +20,79 @@ class ChunkManager:
 
         self.WorldSeed = 1337
 
-    # =========================
-    # MAIN UPDATE LOOP
-    # =========================
+        self.Cache = ChunkCache()
 
     def Update(self):
 
         if not GameState.Player:
             return
 
-        PlayerChunkX = int(GameState.Player.x // self.CHUNK_SIZE)
-        PlayerChunkZ = int(GameState.Player.z // self.CHUNK_SIZE)
+        px = int(GameState.Player.x // self.CHUNK_SIZE)
+        pz = int(GameState.Player.z // self.CHUNK_SIZE)
 
-        NeededChunks = set()
+        Needed = set()
 
         for x in range(-self.VIEW_DISTANCE, self.VIEW_DISTANCE + 1):
             for z in range(-self.VIEW_DISTANCE, self.VIEW_DISTANCE + 1):
 
-                ChunkCoord = (
-                    PlayerChunkX + x,
-                    PlayerChunkZ + z
-                )
+                coord = (px + x, pz + z)
+                Needed.add(coord)
 
-                NeededChunks.add(ChunkCoord)
+                if coord not in self.LoadedChunks and coord not in self.Generating:
+                    self.RequestChunk(coord)
 
-                if ChunkCoord not in self.LoadedChunks and ChunkCoord not in self.Generating:
-                    self.RequestChunk(ChunkCoord)
+        for coord in list(self.LoadedChunks.keys()):
+            if coord not in Needed:
+                self.UnloadChunk(coord)
 
-        # Unload far chunks
-        for ChunkCoord in list(self.LoadedChunks.keys()):
+    # =======================
 
-            if ChunkCoord not in NeededChunks:
-                self.UnloadChunk(ChunkCoord)
+    def RequestChunk(self, Coord):
 
-    # =========================
-    # THREAD REQUEST
-    # =========================
+        x, z = Coord
 
-    def RequestChunk(self, ChunkCoord):
+        Cached = self.Cache.Get(x, z)
 
-        self.Generating.add(ChunkCoord)
+        if Cached:
+            Data = ChunkGenerator.Generate(x, z, self.WorldSeed)
+            Scheduler.Add(lambda: self.SpawnChunk(Data))
+            return
+
+        self.Generating.add(Coord)
 
         Thread = threading.Thread(
-            target=self.GenerateChunkThread,
-            args=(ChunkCoord,)
+            target=self.GenerateThread,
+            args=(Coord,)
         )
 
         Thread.daemon = True
         Thread.start()
 
-    # =========================
-    # THREAD WORK
-    # =========================
+    def FinalizeChunk(self, Data):
 
-    def GenerateChunkThread(self, ChunkCoord):
+        x = Data.ChunkX
+        z = Data.ChunkZ
 
-        ChunkX, ChunkZ = ChunkCoord
+        SaveData = {
+            "heights": Data.Heights,
+            "biomes": Data.BiomeMap,
+            "structures": Data.Structures
+        }
 
-        Data = ChunkGenerator.Generate(
-            ChunkX,
-            ChunkZ,
-            self.WorldSeed
-        )
+        # MAIN THREAD DB SAVE (SAFE)
+        self.Cache.Save(x, z, SaveData)
 
-        Scheduler.Add(lambda: self.SpawnChunk(Data))
+        self.SpawnChunk(Data)
 
-    # =========================
-    # MAIN THREAD SPAWN
-    # =========================
+    def GenerateThread(self, Coord):
+
+        x, z = Coord
+
+        Data = ChunkGenerator.Generate(x, z, self.WorldSeed)
+
+        Scheduler.Add(lambda: self.FinalizeChunk(Data))
+
+    # =======================
 
     def SpawnChunk(self, Data):
 
@@ -101,35 +107,25 @@ class ChunkManager:
             )
         )
 
-        # VERY SIMPLE BLOCK VISUALIZATION
-        for x in range(self.CHUNK_SIZE):
-            for z in range(self.CHUNK_SIZE):
+        Mesh = TerrainMeshBuilder.Build(Data.Heights)
 
-                Height = Data.HeightMap[x][z]
-
-                Entity(
-                    parent=Parent,
-                    model='cube',
-                    scale=(1, Height, 1),
-                    position=(x, Height / 2, z),
-                    color=color.green,
-                    collider='box'
-                )
+        Terrain = Entity(
+            parent=Parent,
+            model=Mesh,
+            color=color.green,
+            collider='mesh'
+        )
 
         self.LoadedChunks[(ChunkX, ChunkZ)] = Parent
         self.Generating.remove((ChunkX, ChunkZ))
 
-    # =========================
-    # UNLOAD
-    # =========================
+    # =======================
 
-    def UnloadChunk(self, ChunkCoord):
+    def UnloadChunk(self, Coord):
 
-        Chunk = self.LoadedChunks.get(ChunkCoord)
+        Chunk = self.LoadedChunks.get(Coord)
 
         if Chunk:
             destroy(Chunk)
 
-        if ChunkCoord in self.LoadedChunks:
-            del self.LoadedChunks[ChunkCoord]
-
+        del self.LoadedChunks[Coord]
