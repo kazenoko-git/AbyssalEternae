@@ -1,53 +1,21 @@
-from panda3d.core import loadPrcFileData
+from panda3d.core import DirectionalLight, LVector3
+from engine.App import EngineApp
+from engine.Terrain import CreateFlatTerrain
 
-loadPrcFileData("", "gl-version 2 1")
-loadPrcFileData("", "glsl-version 120")
+app = EngineApp()
 
-from ursina import *
-from game.core.GameManager import GameManager
-from game.core.GameState import GameState
+terrainNode = CreateFlatTerrain()
+terrain = app.render.attachNewNode(terrainNode)
+terrain.setColor(0.2, 0.7, 0.2, 1)
 
-from ursina import held_keys, time
+# Camera
+app.camera.setPos(5, -20, 10)
+app.camera.lookAt(5, 5, 0)
 
-def PlayerMove():
-    speed = 8 * time.dt
-    if held_keys['w']:
-        Player.z += speed
-    if held_keys['s']:
-        Player.z -= speed
-    if held_keys['a']:
-        Player.x -= speed
-    if held_keys['d']:
-        Player.x += speed
-
-
-app = Ursina()
-window.vsync = True
-window.borderless = False
-window.fullscreen = False
-DirectionalLight(direction=(0.4, -1, 0.4))
-
-
-Player = Entity(
-    model='cube',
-    color=color.orange,
-    scale=1,
-    position=(0, 2, 0)
-)
-
-camera.parent = Player
-camera.position = (0, 15, -20)
-camera.rotation_x = 30
-
-GameState.Player = Player
-
-Game = GameManager()
-Game.Init()
-
-
-def update():
-    PlayerMove()
-    Game.Update()
-
+# Light (EXPLICIT)
+light = DirectionalLight("sun")
+lightNP = app.render.attachNewNode(light)
+lightNP.setHpr(-45, -60, 0)
+app.render.setLight(lightNP)
 
 app.run()
