@@ -2,8 +2,9 @@ from engine.ecs.World import World
 
 
 class Scene:
-    def __init__(self):
+    def __init__(self, renderRoot):
         self.World = World()
+        self.RenderRoot = renderRoot
 
     def Load(self):
         pass
