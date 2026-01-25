@@ -19,6 +19,8 @@ class RenderSystem(System):
                 node = MeshLibrary.Load(mesh.MeshName, self.Loader)
                 node.reparentTo(self.RenderRoot)
                 node.setColor(*mesh.Color)
+                node.setTwoSided(True)
+
                 self._Nodes[entityId] = node
 
             node = self._Nodes[entityId]

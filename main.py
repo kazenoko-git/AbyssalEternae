@@ -27,7 +27,8 @@ class FollowTestScene(Scene):
         self.World.AddSystem(MovementSystem(self.Input))
         self.World.AddSystem(TransformSystem())
         self.World.AddSystem(CameraFollowSystem())
-        self.World.AddSystem(CameraSystem(self.Engine.camera))
+        self.World.AddSystem(TransformSystem()) # recompute
+        self.World.AddSystem(CameraSystem(self.Engine))
         self.World.AddSystem(RenderSystem(self.RenderRoot, self.Engine.loader))
 
         # Player
@@ -38,19 +39,13 @@ class FollowTestScene(Scene):
             meshName="cube",
             color=(0.8, 0.2, 0.2, 1)
         ))
-        self.World.AddComponent(player, Transform(
-            position=(0, 0, 1),
-            scale=(1, 1, 1)
-        ))
-
         # Camera entity
         cam = self.World.CreateEntity()
-        self.World.AddComponent(cam, Transform())
         self.World.AddComponent(cam, Camera())
         self.World.AddComponent(cam, CameraFollow(
             targetEntity=player,
-            offset=(0, -15, 8),
-            smooth=6.0
+            offset=(0, 0, 6),
+            smooth=999
         ))
 
 

@@ -4,18 +4,14 @@ from engine.ecs.components.Camera import Camera
 
 
 class CameraSystem(System):
-    def __init__(self, pandaCamera):
-        self.Camera = pandaCamera
+    def __init__(self, showBase):
+        self.Base = showBase  # THIS is important
 
     def Update(self, world):
         for entityId in world.Query(Transform, Camera):
             transform = world._Components[Transform][entityId]
-            cam = world._Components[Camera][entityId]
 
-            if cam.IsMain:
-                self.Camera.setPos(*transform.Position)
-                self.Camera.setHpr(*transform.Rotation)
-                break
-
-    def FixedUpdate(self, world):
-        pass
+            # THIS is the real camera
+            self.Base.cam.setPos(*transform.WorldPosition)
+            self.Base.cam.setHpr(*transform.WorldRotation)
+            return

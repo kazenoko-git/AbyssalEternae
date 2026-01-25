@@ -6,24 +6,20 @@ from engine.core.Time import Time
 
 class CameraFollowSystem(System):
     def Update(self, world):
-        for entityId in world.Query(Transform, CameraFollow):
-            transform = world._Components[Transform][entityId]
-            follow = world._Components[CameraFollow][entityId]
+        for camId in world.Query(Transform, CameraFollow):
+            camTransform = world._Components[Transform][camId]
+            follow = world._Components[CameraFollow][camId]
 
-            targetTransform = world._Components[Transform].get(follow.Target)
-            if not targetTransform:
+            target = world._Components[Transform].get(follow.Target)
+            if not target:
                 continue
 
             desired = [
-                targetTransform.WorldPosition[i] + follow.Offset[i]
+                target.WorldPosition[i] + follow.Offset[i]
                 for i in range(3)
             ]
 
-            # Smooth interpolation
             for i in range(3):
-                transform.Position[i] += (
-                    desired[i] - transform.Position[i]
+                camTransform.Position[i] += (
+                    desired[i] - camTransform.Position[i]
                 ) * min(1.0, follow.Smooth * Time.Delta)
-
-    def FixedUpdate(self, world):
-        pass

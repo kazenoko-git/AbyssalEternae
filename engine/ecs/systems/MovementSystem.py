@@ -1,6 +1,7 @@
 from engine.ecs.System import System
 from engine.ecs.components.Transform import Transform
 from engine.ecs.components.Movement import Movement
+from engine.ecs.components.Player import Player
 from engine.input.KeyMap import KeyMap
 from engine.core.Time import Time
 
@@ -10,7 +11,7 @@ class MovementSystem(System):
         self.Input = inputState
 
     def Update(self, world):
-        for entityId in world.Query(Transform, Movement):
+        for entityId in world.Query(Transform, Movement, Player):
             transform = world._Components[Transform][entityId]
             movement = world._Components[Movement][entityId]
 
