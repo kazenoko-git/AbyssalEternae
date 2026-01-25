@@ -4,50 +4,48 @@ from engine.core.Scene import Scene
 from engine.ecs.components.Transform import Transform
 from engine.ecs.components.MeshRenderer import MeshRenderer
 from engine.ecs.components.Camera import Camera
+from engine.ecs.components.Movement import Movement
 
+from engine.ecs.systems.MovementSystem import MovementSystem
 from engine.rendering.RenderSystem import RenderSystem
 from engine.rendering.CameraSystem import CameraSystem
 
 from engine.input.InputSystem import InputSystem
-from engine.input.KeyMap import KeyMap
 
 
-class InputTestScene(Scene):
+class MovementTestScene(Scene):
     def Load(self):
         # --- Input ---
         inputSystem = InputSystem(self.Engine)
         self.Input = inputSystem.State
         self.World.AddSystem(inputSystem)
 
-        # --- Rendering ---
+        # --- Systems ---
+        self.World.AddSystem(MovementSystem(self.Input))
         self.World.AddSystem(RenderSystem(self.RenderRoot))
         self.World.AddSystem(CameraSystem(self.Engine.camera))
 
-        # --- Camera entity ---
+        # --- Camera ---
         cam = self.World.CreateEntity()
         self.World.AddComponent(cam, Transform(
-            position=(0, -20, 15),
-            rotation=(0, -30, 0)
+            position=(0, -25, 20),
+            rotation=(0, -35, 0)
         ))
         self.World.AddComponent(cam, Camera())
 
-        # --- Plane entity ---
-        ground = self.World.CreateEntity()
-        self.World.AddComponent(ground, Transform(
-            scale=(5, 5, 1)
+        # --- Player ---
+        player = self.World.CreateEntity()
+        self.World.AddComponent(player, Transform(
+            position=(0, 0, 0),
+            scale=(1, 1, 1)
         ))
-        self.World.AddComponent(ground, MeshRenderer(
+        self.World.AddComponent(player, Movement(speed=10.0))
+        self.World.AddComponent(player, MeshRenderer(
             meshName="plane",
-            color=(0.2, 0.7, 0.2, 1)
+            color=(0.8, 0.2, 0.2, 1)
         ))
-
-    def Update(self):
-        super().Update()
-
-        if self.Input.IsDown(KeyMap.Forward):
-            print("W pressed")
 
 
 engine = Engine()
-engine.SceneManager.LoadScene(InputTestScene(engine))
+engine.SceneManager.LoadScene(MovementTestScene(engine))
 engine.run()
