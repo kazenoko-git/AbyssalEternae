@@ -1,21 +1,21 @@
-from panda3d.core import DirectionalLight, LVector3
-from engine.App import EngineApp
-from engine.Terrain import CreateFlatTerrain
+from engine.core.Engine import Engine
+from engine.core.Scene import Scene
 
-app = EngineApp()
 
-terrainNode = CreateFlatTerrain()
-terrain = app.render.attachNewNode(terrainNode)
-terrain.setColor(0.2, 0.7, 0.2, 1)
+class EmptyScene(Scene):
+    def Load(self):
+        print("Scene loaded")
 
-# Camera
-app.camera.setPos(5, -20, 10)
-app.camera.lookAt(5, 5, 0)
+    def Update(self):
+        pass
 
-# Light (EXPLICIT)
-light = DirectionalLight("sun")
-lightNP = app.render.attachNewNode(light)
-lightNP.setHpr(-45, -60, 0)
-app.render.setLight(lightNP)
+    def FixedUpdate(self):
+        pass
 
-app.run()
+    def Unload(self):
+        print("Scene unloaded")
+
+
+engine = Engine()
+engine.SceneManager.LoadScene(EmptyScene())
+engine.run()
