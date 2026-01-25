@@ -1,12 +1,18 @@
+from engine.ecs.World import World
+
+
 class Scene:
+    def __init__(self):
+        self.World = World()
+
     def Load(self):
         pass
 
     def Update(self):
-        pass
+        self.World.Update()
 
     def FixedUpdate(self):
-        pass
+        self.World.FixedUpdate()
 
     def Unload(self):
         pass
