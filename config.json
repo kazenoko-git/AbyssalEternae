@@ -2,7 +2,7 @@
   "rendering": {
     "width": 1280,
     "height": 720,
-    "title": "GTA VI"
+    "title": "My RPG Game"
   },
   "database": {
     "path": "game.db"

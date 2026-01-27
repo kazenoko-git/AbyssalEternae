@@ -1,7 +1,7 @@
 # aurora_engine/rendering/mesh.py
 
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from aurora_engine.ecs.component import Component
 from aurora_engine.rendering.material import Material
 
@@ -78,11 +78,12 @@ class MeshRenderer(Component):
     Renders a mesh with a material.
     """
 
-    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None):
+    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None, color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)):
         super().__init__()
 
         self.mesh = mesh
         self.material = material
+        self.color = color # Simple color override if no material
 
         # Rendering settings
         self.cast_shadows = True
@@ -110,7 +111,7 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
         # Right face (X+)
         [s, -s, -s], [s, s, -s], [s, s, s], [s, -s, s],
         # Left face (X-)
-        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, -s, s],
+        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, s, -s],
     ]
 
     # Normals

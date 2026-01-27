@@ -7,6 +7,7 @@ from aurora_engine.camera.camera import Camera
 from aurora_engine.ecs.world import World
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer
+from panda3d.core import Vec4
 
 
 class Renderer:
@@ -108,9 +109,12 @@ class Renderer:
             # Update transform
             self.backend.update_mesh_node(mesh_renderer._node_path, world_matrix)
             
-            # Apply material
+            # Apply material or default color
             if mesh_renderer.material:
                 mesh_renderer.material.apply(mesh_renderer._node_path)
+            else:
+                # Apply simple color from MeshRenderer component
+                mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
 
     def end_frame(self):
         """Finalize and present frame."""
