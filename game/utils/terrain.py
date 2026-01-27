@@ -76,6 +76,82 @@ def perlin_noise_2d(x, y, seed=0, octaves=1, persistence=0.5, lacunarity=2.0, sc
         
     return total / max_value if max_value > 0 else 0.0
 
+def ridged_noise_2d(x, y, seed=0, octaves=4, persistence=0.5, lacunarity=2.0, scale=1.0) -> float:
+    """
+    Generates Ridged Multifractal noise (good for mountains/canyons).
+    """
+    # Precompute permutation table (seeded)
+    p = np.arange(256, dtype=int)
+    np.random.seed(seed + 123) # Different seed offset
+    np.random.shuffle(p)
+    p = np.stack([p, p]).flatten()
+
+    total = 0.0
+    max_value = 0.0
+    
+    for i in range(octaves):
+        frequency = scale * (lacunarity ** i)
+        amplitude = persistence ** i
+        
+        x_scaled = x * frequency
+        y_scaled = y * frequency
+        
+        X = int(np.floor(x_scaled)) & 255
+        Y = int(np.floor(y_scaled)) & 255
+        x_frac = x_scaled - np.floor(x_scaled)
+        y_frac = y_scaled - np.floor(y_scaled)
+        u = _fade(x_frac)
+        v = _fade(y_frac)
+        
+        A = p[X] + Y
+        AA = p[A]
+        AB = p[A + 1]
+        B = p[X + 1] + Y
+        BA = p[B]
+        BB = p[B + 1]
+        
+        val = _lerp(v, _lerp(u, _grad(p[AA], x_frac, y_frac, 0),
+                                _grad(p[BA], x_frac - 1, y_frac, 0)),
+                       _lerp(u, _grad(p[AB], x_frac, y_frac - 1, 0),
+                                _grad(p[BB], x_frac - 1, y_frac - 1, 0)))
+        
+        # Ridged logic: 1.0 - abs(noise)
+        val = 1.0 - abs(val)
+        val = val * val # Sharpen ridges
+        
+        total += val * amplitude
+        max_value += amplitude
+        
+    return total / max_value if max_value > 0 else 0.0
+
+def generate_composite_height(x, y, seed):
+    """
+    Combines multiple noise layers for complex terrain.
+    """
+    # 1. Base Continent Shape (Large scale, low frequency)
+    base = perlin_noise_2d(x, y, seed=seed, octaves=2, scale=0.002)
+    
+    # 2. Mountains (Ridged noise, medium scale, masked by base)
+    mountains = ridged_noise_2d(x, y, seed=seed+1, octaves=4, scale=0.01)
+    
+    # 3. Detail (Perlin, high frequency)
+    detail = perlin_noise_2d(x, y, seed=seed+2, octaves=4, scale=0.05)
+    
+    # Composition Logic
+    # If base > 0.2, we have land. If base > 0.6, we have mountains.
+    
+    height = base * 20.0 # Base height -20 to 20
+    
+    if base > 0.3:
+        # Add mountains
+        mountain_factor = (base - 0.3) * 2.0 # 0 to 1+
+        height += mountains * 40.0 * mountain_factor
+        
+    # Add detail everywhere
+    height += detail * 2.0
+    
+    return height
+
 
 # --- Terrain Mesh Generation ---
 def create_terrain_mesh_from_heightmap(heightmap: np.ndarray, cell_size: float = 1.0) -> Mesh:
@@ -117,7 +193,7 @@ def create_terrain_mesh_from_heightmap(heightmap: np.ndarray, cell_size: float =
             elif z < 6.0:
                 # Forest / Darker Grass
                 colors.append([0.2, 0.5, 0.2, 1.0]) # Dark Green
-            elif z < 8.0:
+            elif z < 15.0:
                 # Rock / Mountain Base
                 colors.append([0.5, 0.5, 0.5, 1.0]) # Grey
             else:

@@ -9,11 +9,14 @@ from game.ai.ai_generator import AIContentGenerator
 from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.utils.terrain import create_terrain_mesh_from_heightmap, get_height_at_world_pos
+from game.utils.tree_generator import create_procedural_tree_mesh
+from game.utils.rock_generator import create_procedural_rock_mesh
 from game.controllers.orbit_camera import OrbitCameraController
 from aurora_engine.camera.camera import Camera
 import numpy as np
 import json
 import os
+import time
 from typing import Dict
 
 
@@ -43,9 +46,11 @@ class WorldGenTest(Application):
 
         # Setup Orbit Camera
         camera = Camera()
-        camera.transform.set_world_position(np.array([0, 0, 30.0], dtype=np.float32))
+        camera.transform.set_world_position(np.array([0, 0, 50.0], dtype=np.float32))
         
         self.camera_controller = OrbitCameraController(camera)
+        self.camera_controller.radius = 200.0
+        self.camera_controller.height = 100.0
         self.renderer.register_camera(camera)
 
         # Load Test World
@@ -79,9 +84,10 @@ class WorldGenTest(Application):
 
     def _load_world(self):
         """Load the procedural world."""
-        # 1. Get/Create Dimension
-        dim = self.world_generator.get_or_create_dimension("dim_test", 12345)
-        print(f"Generated Dimension: {dim['name']}")
+        # 1. Get/Create Dimension with Random Seed
+        seed = int(time.time())
+        dim = self.world_generator.get_or_create_dimension("dim_test", seed)
+        print(f"Generated Dimension: {dim['name']} (Seed: {seed})")
         
         # 2. Generate Initial Regions around (0,0)
         regions = self.world_generator.load_chunks_around_player("dim_test", 0, 0, radius=2)
@@ -102,23 +108,36 @@ class WorldGenTest(Application):
     def _instantiate_region(self, region_data: Dict):
         """Create entities for a region."""
         entities = json.loads(region_data['entities_json'])
+        biome = region_data.get('biome_type', 'Forest')
         
         for entity_data in entities:
             e = self.world.create_entity()
             t = e.add_component(Transform())
             t.set_world_position(np.array([entity_data['x'], entity_data['y'], entity_data['z']], dtype=np.float32))
             
+            seed = entity_data.get('seed', 0)
+            scale = entity_data.get('scale', 1.0)
+            
             if entity_data['model'] == 'rock':
-                mesh = create_cube_mesh(entity_data['scale'])
-                e.add_component(MeshRenderer(mesh=mesh, color=(0.5, 0.5, 0.5, 1.0)))
+                # Use Procedural Rock Generator
+                mesh = create_procedural_rock_mesh(seed, scale=scale)
+                # Rock mesh has vertex colors (grey variations), use white node color
+                e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
+                
             elif entity_data['model'] == 'tree':
-                mesh = create_cube_mesh(entity_data['scale'] * 2.0)
-                e.add_component(MeshRenderer(mesh=mesh, color=(0.2, 0.6, 0.2, 1.0)))
+                # Use Procedural Tree Generator with Biome variation
+                tree_type = "Oak"
+                if biome == "Tundra": tree_type = "Pine"
+                elif biome == "Swamp": tree_type = "Willow"
+                
+                mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
+                e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
                 
         # Create Terrain
         if 'heightmap_data' in region_data and region_data['heightmap_data']:
             heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
-            terrain_mesh = create_terrain_mesh_from_heightmap(heightmap, cell_size=10.0)
+            # Use higher resolution for mesh generation if available
+            terrain_mesh = create_terrain_mesh_from_heightmap(heightmap, cell_size=100.0 / (heightmap.shape[0]-1))
             
             ground = self.world.create_entity()
             gt = ground.add_component(Transform())

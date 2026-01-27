@@ -7,7 +7,7 @@ import numpy as np
 from typing import Dict, Optional
 from aurora_engine.database.db_manager import DatabaseManager
 from game.ai.ai_generator import AIContentGenerator
-from game.utils.terrain import perlin_noise_2d, get_height_at_world_pos
+from game.utils.terrain import generate_composite_height, get_height_at_world_pos
 
 
 class WorldGenerator:
@@ -21,7 +21,7 @@ class WorldGenerator:
         self.db = db_manager
         self.ai = ai_generator
         self.region_size = 100.0 # World units per region
-        self.terrain_resolution = 10 # Vertices per 100 units (10x10 grid for heightmap)
+        self.terrain_resolution = 20 # Higher resolution for better mountains
 
     def get_or_create_dimension(self, dimension_id: str, seed: int) -> Dict:
         """Retrieve a dimension or generate it if it doesn't exist."""
@@ -82,29 +82,44 @@ class WorldGenerator:
         print(f"Generating Region {region_id}: {biome}")
         
         # --- Terrain Heightmap Generation ---
-        heightmap_data = self._generate_heightmap(dim_seed, x, y)
+        # Vary terrain parameters based on biome
+        scale_mod = 1.0
+        if biome == "Volcanic": scale_mod = 1.5
+        elif biome == "Desert": scale_mod = 0.5
+        
+        heightmap_data = self._generate_heightmap(dim_seed, x, y, scale_mod)
         
         # Generate Entities (Procedural Placement)
         entities = []
-        num_props = rng.randint(5, 20)
+        num_props = rng.randint(10, 30) # More props
         for _ in range(num_props):
             prop_x = x * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
             prop_y = y * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
             
             # Get height at prop position
-            # Need to pass region data to get_height_at_world_pos, but region is not saved yet.
-            # So we regenerate height for this specific point.
-            prop_z = perlin_noise_2d(prop_x, prop_y, seed=dim_seed, octaves=4, persistence=0.5, lacunarity=2.0, scale=0.01) * 10.0 # Scale height
+            # Use the composite height function directly for accuracy
+            prop_z = generate_composite_height(prop_x, prop_y, dim_seed) * scale_mod
             
-            prop = {
-                "type": "prop",
-                "model": "rock" if rng.random() > 0.5 else "tree",
-                "x": prop_x,
-                "y": prop_y,
-                "z": prop_z,
-                "scale": rng.uniform(0.8, 1.5)
-            }
-            entities.append(prop)
+            # Only spawn if above water
+            if prop_z > -1.0:
+                # Determine prop type based on biome
+                model_type = "tree"
+                if biome == "Desert" or biome == "Volcanic":
+                    model_type = "rock"
+                elif rng.random() > 0.7:
+                    model_type = "rock"
+                
+                prop = {
+                    "type": "prop",
+                    "model": model_type,
+                    "x": prop_x,
+                    "y": prop_y,
+                    "z": prop_z,
+                    "scale": rng.uniform(0.8, 1.5),
+                    "seed": rng.randint(0, 10000), # Seed for procedural generation
+                    "biome": biome
+                }
+                entities.append(prop)
             
         # Save Region
         self.db.execute("""
@@ -115,7 +130,7 @@ class WorldGenerator:
         
         return self.db.fetch_one("SELECT * FROM regions WHERE region_id = ?", (region_id,))
 
-    def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int) -> np.ndarray:
+    def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int, scale_mod: float = 1.0) -> np.ndarray:
         """Generate a heightmap for a specific region."""
         
         # Heightmap grid size (e.g., 10x10 vertices for a 100x100 unit region)
@@ -137,9 +152,8 @@ class WorldGenerator:
                 wx = world_origin_x + c * cell_world_size
                 wy = world_origin_y + r * cell_world_size
                 
-                # Generate Perlin noise for height
-                # Scale the noise input coordinates to get desired terrain features
-                height = perlin_noise_2d(wx, wy, seed=dim_seed, octaves=4, persistence=0.5, lacunarity=2.0, scale=0.01) * 10.0 # Scale height
+                # Generate Composite Height (Base + Mountains + Detail)
+                height = generate_composite_height(wx, wy, dim_seed) * scale_mod
                 heightmap[r, c] = height
                 
         return heightmap
