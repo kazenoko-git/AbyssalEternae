@@ -3,7 +3,7 @@
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
 from aurora_engine.scene.transform import Transform
-from aurora_engine.utils.math import quaternion_from_euler, quaternion_to_matrix, look_at_matrix
+from aurora_engine.utils.math import quaternion_from_euler, matrix_to_quaternion
 
 
 class ThirdPersonController(CameraController):
@@ -61,79 +61,53 @@ class ThirdPersonController(CameraController):
         self.camera.transform.set_world_position(self._current_position)
 
         # Look at target
-        # We want the camera to look at the target.
-        # The camera's transform rotation should be set such that it faces the target.
-        # We can compute the rotation matrix or quaternion.
-        
-        # Direction from camera to target
+        # Calculate direction vector
         direction = target_pos - self._current_position
         if np.linalg.norm(direction) > 0.001:
             direction = direction / np.linalg.norm(direction)
             
-            # Calculate pitch and yaw from direction vector
-            # This is a simplified look-at. For a full look-at matrix conversion to quaternion/euler
-            # we might need more robust math, but here we can just set the rotation based on the
-            # calculated yaw and pitch if we assume the camera is controlled by them.
-            # However, since we are smoothing position, the actual look direction might slightly differ
-            # from the input yaw/pitch.
+            # Create look-at rotation
+            # Z-up coordinate system:
+            # Forward = direction
+            # Up = Z (0,0,1)
+            # Right = Cross(Forward, Up)
+            # Re-orthogonalize Up = Cross(Right, Forward)
             
-            # Let's use a look_at function to get the rotation matrix, then extract rotation.
-            # Since Transform stores rotation as quaternion (usually), we need to convert.
-            # Assuming Transform has a method to set rotation from matrix or look_at.
-            # If not, we can implement a simple look_at logic here.
+            forward = direction
+            up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
             
-            # For now, let's just use the input yaw and pitch to determine rotation, 
-            # assuming the camera is always perfectly aligned with the orbit.
-            # But since position is smoothed, we should look at the actual target.
+            # Handle case where forward is parallel to up
+            if abs(np.dot(forward, up)) > 0.99:
+                up = np.array([0.0, 1.0, 0.0], dtype=np.float32) # Fallback up
+                
+            right = np.cross(forward, up)
+            right = right / np.linalg.norm(right)
             
-            # Simple look at:
-            # Pitch is angle with XZ plane
-            # Yaw is angle around Y axis
+            up = np.cross(right, forward)
+            up = up / np.linalg.norm(up)
             
-            look_pitch = np.arcsin(direction[2])
-            look_yaw = np.arctan2(direction[0], direction[1]) # Assuming Y is forward/up depending on coord system?
-            # Panda3D: Z is up, Y is forward.
-            # direction[0] = x, direction[1] = y, direction[2] = z
-            # yaw = atan2(x, y) ? No, usually atan2(y, x) is angle from X axis.
-            # In Panda3D (Z-up), yaw is rotation around Z. 0 yaw = facing Y+.
-            # So yaw = atan2(-x, y) (standard convention varies).
+            # Create rotation matrix (Column-Major for our engine math)
+            # [Right, Up, -Forward] (OpenGL convention is -Z forward)
+            # Panda3D uses Y-forward.
+            # If we want camera to look along Y+, then Forward is Y.
+            # So matrix columns should be: [Right, Forward, Up] ?
+            # Let's stick to standard math:
+            # If we want to look at 'target', the camera's local Y axis should point to 'target'.
+            # Local X is Right. Local Z is Up.
             
-            # Let's rely on a utility or just set the rotation based on the inputs for now,
-            # as that's more stable for a third person camera than looking at the exact point if there's lag.
-            # Actually, looking at the target is better.
+            # Matrix columns:
+            # Col 0: Right (X)
+            # Col 1: Forward (Y) -> This is our 'direction' vector
+            # Col 2: Up (Z)
             
-            # Let's assume we have a look_at method on transform or we compute it.
-            # Since we don't have the full Transform API visible, let's assume we can set rotation via Euler.
-            # But wait, we have `quaternion_from_euler`.
+            rot_mat = np.eye(3, dtype=np.float32)
+            rot_mat[:, 0] = right
+            rot_mat[:, 1] = forward # Y is forward
+            rot_mat[:, 2] = up
             
-            # Let's use the input yaw and pitch for rotation to keep it locked to control.
-            # This feels more responsive.
-            
-            # Convert degrees to radians for math functions
-            yaw_rad = np.radians(self.yaw)
-            pitch_rad = np.radians(self.pitch)
-            
-            # Create quaternion from Euler (Pitch, Yaw, Roll)
-            # Note: Order depends on coordinate system.
-            # Assuming Z-up (Panda3D style):
-            # Yaw around Z, Pitch around X (local), Roll around Y (local)
-            # But our math util might expect specific order.
-            # Let's assume standard [pitch, yaw, roll].
-            
-            # We need to invert pitch because looking down is usually negative pitch in some systems,
-            # or positive. Let's stick to the input.
-            
-            # If we look at the target, we should use the calculated direction.
-            # But let's use the input values for the camera rotation to match the orbit.
-            # We need to negate pitch if the camera looks "down" at the target when pitch is positive.
-            # If pitch is 20 (above target), camera looks down (-20).
-            
-            cam_pitch = -self.pitch
-            cam_yaw = self.yaw
-            
-            quat = quaternion_from_euler(np.radians(np.array([cam_pitch, cam_yaw, 0.0])))
+            # Convert to quaternion
+            quat = matrix_to_quaternion(rot_mat)
             self.camera.transform.local_rotation = quat
-
 
     def rotate(self, delta_yaw: float, delta_pitch: float):
         """Rotate camera (call from input system)."""
