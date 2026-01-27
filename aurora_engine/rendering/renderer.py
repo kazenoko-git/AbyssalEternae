@@ -113,8 +113,13 @@ class Renderer:
             if mesh_renderer.material:
                 mesh_renderer.material.apply(mesh_renderer._node_path)
             else:
-                # Apply simple color from MeshRenderer component
-                mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
+                # If mesh has vertex colors, prioritize them
+                if mesh_renderer.mesh and mesh_renderer.mesh.colors is not None and len(mesh_renderer.mesh.colors) > 0:
+                    # Disable flat color override to let vertex colors show
+                    mesh_renderer._node_path.setColorOff()
+                else:
+                    # Apply simple color from MeshRenderer component
+                    mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
 
     def end_frame(self):
         """Finalize and present frame."""

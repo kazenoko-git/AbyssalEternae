@@ -46,6 +46,9 @@ class PandaBackend:
         
         # Disable default mouse control
         self.base.disableMouse()
+        
+        # Set Clear Color to Sky Blue
+        self.base.setBackgroundColor(0.53, 0.8, 0.92, 1)
 
     def clear_buffers(self):
         """Clear color and depth buffers."""
@@ -66,15 +69,6 @@ class PandaBackend:
         for i in range(4):
             for j in range(4):
                 # Transpose: setCell(row, col, value) -> use (j, i) from source to transpose
-                # Source is [row, col] in numpy.
-                # We want Source[i, j] (which is row i, col j) to go to Target(j, i) (row j, col i)
-                # Wait, if Source is Column-Major stored as [row, col] in numpy...
-                # Numpy: M[0, 3] is Tx.
-                # Panda: M(3, 0) is Tx.
-                # So we want Panda(3, 0) = Numpy[0, 3].
-                # setCell(row, col, val).
-                # setCell(3, 0, Numpy[0, 3]).
-                # So setCell(j, i, Numpy[i, j]).
                 mat.setCell(j, i, inv_view[i, j])
                 
         self.base.camera.setMat(mat)
@@ -113,12 +107,14 @@ class PandaBackend:
 
     def _upload_mesh(self, mesh: Mesh):
         """Convert Mesh to Panda3D GeomNode."""
-        format = GeomVertexFormat.getV3n3t2()
+        # Use V3n3c4t2 format to support vertex colors
+        format = GeomVertexFormat.getV3n3c4t2()
         vdata = GeomVertexData(mesh.name, format, Geom.UHStatic)
         
         # Vertices
         vertex = GeomVertexWriter(vdata, 'vertex')
         normal = GeomVertexWriter(vdata, 'normal')
+        color = GeomVertexWriter(vdata, 'color')
         texcoord = GeomVertexWriter(vdata, 'texcoord')
         
         for i in range(len(mesh.vertices)):
@@ -128,6 +124,13 @@ class PandaBackend:
             if len(mesh.normals) > i:
                 n = mesh.normals[i]
                 normal.addData3(n[0], n[1], n[2])
+                
+            if mesh.colors is not None and len(mesh.colors) > i:
+                c = mesh.colors[i]
+                color.addData4(c[0], c[1], c[2], c[3])
+            else:
+                # Default to White so node color works
+                color.addData4(1, 1, 1, 1)
                 
             if len(mesh.uvs) > i:
                 uv = mesh.uvs[i]

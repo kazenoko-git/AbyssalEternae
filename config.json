@@ -2,7 +2,7 @@
   "rendering": {
     "width": 1280,
     "height": 720,
-    "title": "My RPG Game"
+    "title": "Rifted"
   },
   "database": {
     "path": "game.db"

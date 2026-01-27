@@ -58,6 +58,7 @@ class DatabaseSchema:
                 coordinates_y INTEGER NOT NULL,
                 biome_type TEXT,
                 entities_json TEXT, -- Serialized static entities
+                heightmap_data TEXT, -- Serialized heightmap array
                 is_generated BOOLEAN DEFAULT 0,
                 FOREIGN KEY (dimension_id) REFERENCES dimensions(dimension_id)
             )
