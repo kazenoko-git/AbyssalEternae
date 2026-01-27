@@ -8,14 +8,17 @@ from aurora_engine.rendering.material import Material
 from aurora_engine.rendering.shader import Shader
 from game.systems.player_system import PlayerSystem
 from game.systems.dialogue_system import DialogueSystem
+from game.systems.world_generator import WorldGenerator
 from game.ai.ai_generator import AIContentGenerator
 from aurora_engine.database.db_manager import DatabaseManager
+from aurora_engine.database.schema import DatabaseSchema
 import numpy as np
 import json
 import os
+from typing import Dict
 
 
-class RPGGame(Application):
+class Rifted(Application):
     """
     Example RPG game built on Aurora Engine.
     This is the GAME layer - it uses the engine API.
@@ -27,21 +30,27 @@ class RPGGame(Application):
         self.db_manager = DatabaseManager(self.config.get('database.path', 'game.db'))
         self.db_manager.connect()
         
+        # Ensure Schema
+        DatabaseSchema.create_tables(self.db_manager)
+        
         # Initialize AI Generator
         self.ai_generator = AIContentGenerator(self.db_manager)
+        
+        # Initialize World Generator
+        self.world_generator = WorldGenerator(self.db_manager, self.ai_generator)
 
         # Create player entity
-        player = self.world.create_entity()
-        player_transform = player.add_component(Transform())
+        self.player = self.world.create_entity()
+        player_transform = self.player.add_component(Transform())
         player_transform.set_world_position(np.array([0, 0, 0.5], dtype=np.float32)) # On ground
 
         # Add player visual (Blue Cube)
         player_mesh = create_cube_mesh(1.0)
-        player.add_component(MeshRenderer(mesh=player_mesh, color=(0.2, 0.4, 0.8, 1.0)))
+        self.player.add_component(MeshRenderer(mesh=player_mesh, color=(0.2, 0.4, 0.8, 1.0)))
 
         # Add player-specific components
         from game.components.player import PlayerController
-        player.add_component(PlayerController())
+        self.player.add_component(PlayerController())
 
         # Setup camera to follow player
         from aurora_engine.camera.camera import Camera
@@ -59,8 +68,8 @@ class RPGGame(Application):
         dialogue_system.ai_generator = self.ai_generator
         self.world.add_system(dialogue_system)
 
-        # Load initial scene
-        self._load_starting_town()
+        # Load Initial World
+        self._load_world()
         
         # Add basic lighting
         self._setup_lighting()
@@ -87,22 +96,69 @@ class RPGGame(Application):
         super().update(dt, alpha)
         if hasattr(self, 'camera_controller'):
             self.camera_controller.update(dt)
+            
+        # Chunk Loading Logic
+        if hasattr(self, 'player') and hasattr(self, 'world_generator'):
+            transform = self.player.get_component(Transform)
+            pos = transform.get_world_position()
+            # In a real game, we'd check if we crossed a chunk boundary before calling this every frame
+            # For now, let's just do it periodically or simply rely on the generator's internal checks if we add them.
+            # But the generator just returns data, it doesn't instantiate.
+            # We need a system to instantiate the generated regions.
+            pass
 
-    def _load_starting_town(self):
-        """Load the starting town scene."""
-        # Spawn NPCs
-        # Revert to Spheres to verify fix
-        self._spawn_npc("village_elder", "Elder", np.array([5, 0, 0.5], dtype=np.float32), (0.8, 0.2, 0.2, 1.0)) # Red
-        self._spawn_npc("merchant", "Merchant", np.array([0, 5, 0.5], dtype=np.float32), (0.2, 0.8, 0.2, 1.0)) # Green
+    def _load_world(self):
+        """Load the procedural world."""
+        # 1. Get/Create Dimension
+        # Tutorial Dimension (Seed 12345)
+        dim = self.world_generator.get_or_create_dimension("dim_tutorial", 12345)
+        print(f"Entered Dimension: {dim['name']}")
+        
+        # 2. Generate Initial Regions around (0,0)
+        regions = self.world_generator.load_chunks_around_player("dim_tutorial", 0, 0, radius=1)
+        
+        # 3. Instantiate Regions
+        for region in regions:
+            self._instantiate_region(region)
 
-        # Load environment (Ground plane)
+    def _instantiate_region(self, region_data: Dict):
+        """Create entities for a region."""
+        # This is a simplified instantiation. In a real engine, we'd have a RegionManager system.
+        entities = json.loads(region_data['entities_json'])
+        
+        for entity_data in entities:
+            # Create Entity
+            e = self.world.create_entity()
+            t = e.add_component(Transform())
+            t.set_world_position(np.array([entity_data['x'], entity_data['y'], entity_data['z']], dtype=np.float32))
+            
+            # Visuals
+            if entity_data['model'] == 'rock':
+                mesh = create_cube_mesh(entity_data['scale'])
+                e.add_component(MeshRenderer(mesh=mesh, color=(0.5, 0.5, 0.5, 1.0))) # Grey Rock
+            elif entity_data['model'] == 'tree':
+                mesh = create_cube_mesh(entity_data['scale'] * 2.0) # Tall cube
+                e.add_component(MeshRenderer(mesh=mesh, color=(0.2, 0.6, 0.2, 1.0))) # Green Tree
+                
+        # Create Ground for this region
+        # 100x100 chunk
         ground = self.world.create_entity()
-        ground_transform = ground.add_component(Transform())
-        ground_transform.set_world_position(np.array([0, 0, 0], dtype=np.float32))
-        ground_transform.local_scale = np.array([50.0, 50.0, 1.0], dtype=np.float32) # Scale plane (X, Y)
+        gt = ground.add_component(Transform())
+        # Center of chunk
+        cx = region_data['coordinates_x'] * 100
+        cy = region_data['coordinates_y'] * 100
+        gt.set_world_position(np.array([cx, cy, 0], dtype=np.float32))
+        gt.local_scale = np.array([100.0, 100.0, 1.0], dtype=np.float32)
         
         ground_mesh = create_plane_mesh(1.0, 1.0)
-        ground.add_component(MeshRenderer(mesh=ground_mesh, color=(0.2, 0.8, 0.2, 1.0))) # Green ground
+        # Biome color
+        biome = region_data['biome_type']
+        color = (0.2, 0.8, 0.2, 1.0) # Default Green
+        if biome == 'Desert': color = (0.8, 0.8, 0.4, 1.0)
+        elif biome == 'Volcanic': color = (0.3, 0.1, 0.1, 1.0)
+        elif biome == 'Tundra': color = (0.9, 0.9, 1.0, 1.0)
+        
+        ground.add_component(MeshRenderer(mesh=ground_mesh, color=color))
 
     def _spawn_npc(self, npc_id: str, name: str, position: np.ndarray, color=(1,1,1,1)):
         """Spawn an NPC entity."""
@@ -132,7 +188,7 @@ if __name__ == "__main__":
         'rendering': {
             'width': 1280,
             'height': 720,
-            'title': 'My RPG Game',
+            'title': 'Rifted',
         },
         'database': {
             'path': 'game.db'
@@ -143,5 +199,5 @@ if __name__ == "__main__":
     with open("config.json", "w") as f:
         json.dump(config_data, f, indent=2)
 
-    game = RPGGame("config.json")
+    game = Rifted("config.json")
     game.run()
