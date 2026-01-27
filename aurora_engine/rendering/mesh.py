@@ -111,7 +111,7 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
         # Right face (X+)
         [s, -s, -s], [s, s, -s], [s, s, s], [s, -s, s],
         # Left face (X-)
-        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, s, -s],
+        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, -s, s],
     ]
 
     # Normals
@@ -135,9 +135,46 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
 
     # Indices (2 triangles per face)
     indices = []
-    for i in range(6):
-        base = i * 4
-        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+    
+    # Helper to add quad indices with specific winding
+    def add_quad(base, flip=False):
+        if not flip:
+            # CCW: 0->1->2, 0->2->3
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+        else:
+            # Flip to make it CCW if vertices are defined CW
+            # 0->2->1, 0->3->2
+            indices.extend([base, base + 2, base + 1, base, base + 3, base + 2])
+
+    # Front (Y+): BL->BR->TR->TL. CCW.
+    add_quad(0, flip=False)
+    
+    # Back (Y-): BR->BL->TL->TR (looking from back). 
+    # Vertices: 0(BR), 1(BL), 2(TL), 3(TR).
+    # 0->1 is Right->Left. CW.
+    add_quad(4, flip=True)
+    
+    # Top (Z+): BL->BR->TR->TL. CCW.
+    add_quad(8, flip=False)
+    
+    # Bottom (Z-): TL->TR->BR->BL (looking from bottom).
+    # Vertices: 0(TL), 1(TR), 2(BR), 3(BL).
+    # 0->1 is Left->Right. CCW?
+    # Wait. TL(-x, y), TR(x, y). Vector Right.
+    # TR->BR (x, y) -> (x, -y). Vector Down.
+    # Right x Down = Back (-Z).
+    # We want Normal -Z. So this is CCW for -Z?
+    # If normal is -Z, and we look from -Z (bottom), we want CCW.
+    # Vertices are defined looking from top?
+    # [-s, -s, -s] (BL), [s, -s, -s] (BR).
+    # Let's just flip it, my previous analysis said it was CW.
+    add_quad(12, flip=True)
+    
+    # Right (X+): BL->BR->TR->TL. CCW.
+    add_quad(16, flip=False)
+    
+    # Left (X-): BR->BL->TL->TR. CW.
+    add_quad(20, flip=True)
 
     mesh.vertices = np.array(vertices, dtype=np.float32)
     mesh.normals = np.array(normals, dtype=np.float32)
@@ -185,8 +222,11 @@ def create_sphere_mesh(radius: float = 1.0, segments: int = 32, rings: int = 16)
             next_ring = current + segments + 1
             next_both = next_ring + 1
 
-            indices.extend([current, next_seg, next_ring])
-            indices.extend([next_seg, next_both, next_ring])
+            # CCW Winding:
+            # current (TL) -> next_ring (BL) -> next_seg (TR)
+            # next_seg (TR) -> next_ring (BL) -> next_both (BR)
+            indices.extend([current, next_ring, next_seg])
+            indices.extend([next_seg, next_ring, next_both])
 
     mesh.vertices = np.array(vertices, dtype=np.float32)
     mesh.normals = np.array(normals, dtype=np.float32)
@@ -207,10 +247,10 @@ def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
 
     # XY Plane (Z=0)
     vertices = [
-        [-w, h, 0],  # Top-Left
-        [w, h, 0],   # Top-Right
-        [w, -h, 0],  # Bottom-Right
-        [-w, -h, 0], # Bottom-Left
+        [-w, h, 0],  # 0: Top-Left
+        [w, h, 0],   # 1: Top-Right
+        [w, -h, 0],  # 2: Bottom-Right
+        [-w, -h, 0], # 3: Bottom-Left
     ]
 
     normals = [
@@ -227,7 +267,10 @@ def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
         [0, 0],
     ]
 
-    indices = [0, 1, 2, 0, 2, 3]
+    # CCW Winding for +Z normal
+    # 0(TL) -> 2(BR) -> 1(TR)
+    # 0(TL) -> 3(BL) -> 2(BR)
+    indices = [0, 2, 1, 0, 3, 2]
 
     mesh.vertices = np.array(vertices, dtype=np.float32)
     mesh.normals = np.array(normals, dtype=np.float32)

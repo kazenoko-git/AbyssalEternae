@@ -52,7 +52,8 @@ class RPGGame(Application):
         self.renderer.register_camera(camera)
 
         # Add game systems
-        self.world.add_system(PlayerSystem())
+        # Pass input manager to PlayerSystem
+        self.world.add_system(PlayerSystem(self.input))
         
         dialogue_system = DialogueSystem(self.ui)
         dialogue_system.ai_generator = self.ai_generator
@@ -90,6 +91,7 @@ class RPGGame(Application):
     def _load_starting_town(self):
         """Load the starting town scene."""
         # Spawn NPCs
+        # Revert to Spheres to verify fix
         self._spawn_npc("village_elder", "Elder", np.array([5, 0, 0.5], dtype=np.float32), (0.8, 0.2, 0.2, 1.0)) # Red
         self._spawn_npc("merchant", "Merchant", np.array([0, 5, 0.5], dtype=np.float32), (0.2, 0.8, 0.2, 1.0)) # Green
 
@@ -100,7 +102,7 @@ class RPGGame(Application):
         ground_transform.local_scale = np.array([50.0, 50.0, 1.0], dtype=np.float32) # Scale plane (X, Y)
         
         ground_mesh = create_plane_mesh(1.0, 1.0)
-        ground.add_component(MeshRenderer(mesh=ground_mesh, color=(0.5, 0.5, 0.5, 1.0))) # Grey ground
+        ground.add_component(MeshRenderer(mesh=ground_mesh, color=(0.2, 0.8, 0.2, 1.0))) # Green ground
 
     def _spawn_npc(self, npc_id: str, name: str, position: np.ndarray, color=(1,1,1,1)):
         """Spawn an NPC entity."""
