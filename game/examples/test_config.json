@@ -1,0 +1,10 @@
+{
+  "rendering": {
+    "width": 1280,
+    "height": 720,
+    "title": "World Gen Test"
+  },
+  "database": {
+    "path": "world_gen_test.db"
+  }
+}

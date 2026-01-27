@@ -7,7 +7,7 @@ import numpy as np
 from typing import Dict, Optional
 from aurora_engine.database.db_manager import DatabaseManager
 from game.ai.ai_generator import AIContentGenerator
-from aurora_engine.world.terrain_generator import perlin_noise_2d, get_height_at_world_pos
+from game.utils.terrain import perlin_noise_2d, get_height_at_world_pos
 
 
 class WorldGenerator:
