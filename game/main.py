@@ -11,7 +11,7 @@ from game.systems.world_generator import WorldGenerator
 from game.ai.ai_generator import AIContentGenerator
 from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
-from aurora_engine.world.terrain_generator import create_terrain_mesh_from_heightmap, get_height_at_world_pos
+from game.utils.terrain import create_terrain_mesh_from_heightmap, get_height_at_world_pos
 import numpy as np
 import json
 import os
@@ -41,16 +41,14 @@ class Rifted(Application):
 
         # Setup Camera for World Overview
         from aurora_engine.camera.camera import Camera
-        from aurora_engine.camera.free_fly import FreeFlyController
+        from game.controllers.orbit_camera import OrbitCameraController
 
         camera = Camera()
         camera_transform = camera.transform
         # Position lower and look down less steeply to see terrain better
         camera_transform.set_world_position(np.array([0, 0, 30.0], dtype=np.float32))
         
-        self.camera_controller = FreeFlyController(camera)
-        self.camera_controller.pitch = -60.0 # Look down 60 degrees
-        self.camera_controller.auto_pan_speed = 2.0 # Slower pan
+        self.camera_controller = OrbitCameraController(camera)
         self.renderer.register_camera(camera)
 
         # Add game systems
@@ -76,7 +74,7 @@ class Rifted(Application):
         
         # Directional light
         dlight = DirectionalLight('dlight')
-        dlight.setColor(Vec4(0.5, 0.5, 0.5, 1)) # Reduced intensity to prevent whiteout
+        dlight.setColor(Vec4(0.9, 0.9, 0.9, 1))
         dlnp = self.renderer.backend.scene_graph.attachNewNode(dlight)
         dlnp.setHpr(45, -60, 0) # Angled light
         self.renderer.backend.scene_graph.setLight(dlnp)
