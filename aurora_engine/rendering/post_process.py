@@ -2,6 +2,7 @@
 
 from panda3d.core import Texture, Shader
 from direct.filter.FilterManager import FilterManager
+import logging
 
 class PostProcessEffect:
     """
@@ -25,7 +26,7 @@ class OutlineEffect(PostProcessEffect):
     Detects edges using depth/normal buffer and draws outlines.
     """
 
-    def __init__(self):
+    def __init__(self, base=None):
         super().__init__("Outline")
 
         self.outline_color = (0.0, 0.0, 0.0, 1.0)
@@ -33,62 +34,34 @@ class OutlineEffect(PostProcessEffect):
         self.depth_threshold = 0.1
         self.normal_threshold = 0.4
         self.manager = None
+        
+        if base:
+            self._initialize_manager(base)
+
+    def _initialize_manager(self, base):
+        """Initialize FilterManager once."""
+        if not self.manager and base:
+            try:
+                self.manager = FilterManager(base.win, base.cam)
+                
+                # Request depth and normal textures
+                tex_depth = Texture()
+                tex_normal = Texture()
+                
+                # Create quad for post processing
+                self.quad = self.manager.renderSceneInto(colortex=None, depthtex=tex_depth, auxtex=tex_normal)
+                
+                if self.quad:
+                    # Placeholder shader setup
+                    pass
+            except Exception as e:
+                logging.warning(f"Failed to initialize OutlineEffect: {e}")
+                self.enabled = False
 
     def apply(self, renderer):
         """Apply outline detection shader."""
-        if not renderer.backend.base:
-            return
-            
-        if not self.manager:
-            # Setup FilterManager
-            self.manager = FilterManager(renderer.backend.base.win, renderer.backend.base.cam)
-            
-            # Request depth and normal textures
-            tex_depth = Texture()
-            tex_normal = Texture()
-            
-            # Create quad for post processing
-            quad = self.manager.renderSceneInto(colortex=None, depthtex=tex_depth, auxtex=tex_normal)
-            
-            if quad:
-                # Load shader
-                # For now, we assume a shader file exists or we use a simple generated one.
-                # Since we can't write shader files easily here without knowing the path structure for assets,
-                # we'll just set a placeholder or use a basic shader string if Panda supports it.
-                # Panda3D supports shader strings via Shader.make()
-                
-                shader_text = """
-                //Cg
-                //Cg profile arbvp1 arbfp1
-
-                void vshader(float4 vtx_position : POSITION,
-                             float2 vtx_texcoord0 : TEXCOORD0,
-                             out float4 l_position : POSITION,
-                             out float2 l_texcoord0 : TEXCOORD0,
-                             uniform float4x4 mat_modelproj)
-                {
-                  l_position=mul(mat_modelproj, vtx_position);
-                  l_texcoord0=vtx_texcoord0;
-                }
-
-                void fshader(float2 l_texcoord0 : TEXCOORD0,
-                             out float4 o_color : COLOR,
-                             uniform sampler2D k_depth : TEXUNIT0,
-                             uniform sampler2D k_normal : TEXUNIT1,
-                             uniform float4 k_param1) // thickness, threshold
-                {
-                  // Simple edge detection placeholder
-                  float depth = tex2D(k_depth, l_texcoord0).r;
-                  o_color = float4(depth, depth, depth, 1.0);
-                }
-                """
-                # Note: Real implementation needs a proper edge detection shader (Sobel)
-                # This is just to show structure.
-                
-                # quad.setShader(Shader.make(shader_text, Shader.SL_Cg))
-                # quad.setShaderInput("depth", tex_depth)
-                # quad.setShaderInput("normal", tex_normal)
-                pass
+        # Manager is initialized in __init__ now
+        pass
 
 
 class BloomEffect(PostProcessEffect):
@@ -97,24 +70,33 @@ class BloomEffect(PostProcessEffect):
     Commonly used in anime-style games.
     """
 
-    def __init__(self):
+    def __init__(self, base=None):
         super().__init__("Bloom")
 
         self.threshold = 0.8
         self.intensity = 0.5
         self.blur_passes = 5
         self.manager = None
+        
+        if base:
+            self._initialize_manager(base)
+
+    def _initialize_manager(self, base):
+        """Initialize FilterManager once."""
+        if not self.manager and base:
+            try:
+                self.manager = FilterManager(base.win, base.cam)
+                tex = Texture()
+                self.quad = self.manager.renderSceneInto(colortex=tex)
+                
+                if self.quad:
+                    # Placeholder shader setup
+                    pass
+            except Exception as e:
+                logging.warning(f"Failed to initialize BloomEffect: {e}")
+                self.enabled = False
 
     def apply(self, renderer):
         """Apply bloom effect."""
-        if not renderer.backend.base:
-            return
-
-        if not self.manager:
-            self.manager = FilterManager(renderer.backend.base.win, renderer.backend.base.cam)
-            tex = Texture()
-            quad = self.manager.renderSceneInto(colortex=tex)
-            
-            if quad:
-                # Apply bloom shader
-                pass
+        # Manager is initialized in __init__ now
+        pass

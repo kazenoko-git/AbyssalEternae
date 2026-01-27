@@ -1,0 +1,10 @@
+{
+  "rendering": {
+    "width": 1920,
+    "height": 1080,
+    "title": "My RPG Game"
+  },
+  "database": {
+    "path": "game.db"
+  }
+}

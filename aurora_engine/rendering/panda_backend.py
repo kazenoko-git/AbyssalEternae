@@ -50,7 +50,12 @@ class PandaBackend:
     def clear_buffers(self):
         """Clear color and depth buffers."""
         # Panda3D handles this automatically
-        pass
+        # But we need to call taskMgr.step() somewhere if we are running our own loop.
+        # Application.run() has its own loop calling render().
+        # Panda3D usually expects to own the main loop via base.run().
+        # If we are driving the loop manually, we must call taskMgr.step().
+        if self.base:
+            self.base.taskMgr.step()
 
     def set_view_projection(self, view: np.ndarray, projection: np.ndarray):
         """Set camera matrices."""

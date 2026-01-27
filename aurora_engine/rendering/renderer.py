@@ -38,13 +38,15 @@ class Renderer:
         from aurora_engine.rendering.post_process import OutlineEffect, BloomEffect
 
         # Add outline effect
-        outline = OutlineEffect()
-        self.pipeline.add_post_effect(outline)
+        # Pass the base object to initialize FilterManager correctly
+        # outline = OutlineEffect(self.backend.base)
+        # self.pipeline.add_post_effect(outline)
 
         # Add bloom
-        bloom = BloomEffect()
-        bloom.priority = 10
-        self.pipeline.add_post_effect(bloom)
+        # bloom = BloomEffect(self.backend.base)
+        # bloom.priority = 10
+        # self.pipeline.add_post_effect(bloom)
+        pass
 
     def register_camera(self, camera: Camera):
         """Register a camera for rendering."""

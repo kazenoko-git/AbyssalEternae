@@ -1,6 +1,9 @@
 # aurora_engine/ui/theme.py
 
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aurora_engine.ui.widget import Widget
 
 
 class UITheme:
@@ -46,7 +49,7 @@ class UITheme:
         """Get color by name."""
         return self.colors.get(name, (1.0, 1.0, 1.0, 1.0))
 
-    def apply_to_widget(self, widget: Widget):
+    def apply_to_widget(self, widget: 'Widget'):
         """Apply theme to a widget."""
         # Override in specific implementations
         pass
