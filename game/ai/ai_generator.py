@@ -1,6 +1,8 @@
 # game_project/ai/ai_generator.py
 
-import anthropic, json
+import anthropic
+import json
+import time
 from typing import Dict, List
 from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.ai.dialogue_cache import DialogueCache
@@ -15,7 +17,9 @@ class AIContentGenerator:
     """
 
     def __init__(self, db_manager: DatabaseManager):
-        self.client = anthropic.Anthropic(api_key="...")
+        # Placeholder API key - in production use env var or config
+        self.client = anthropic.Anthropic(api_key="YOUR_API_KEY_HERE")
+        self.db = db_manager
         self.dialogue_cache = DialogueCache(db_manager)
         self.memory_system = NPCMemorySystem(db_manager)
 
@@ -36,21 +40,23 @@ class AIContentGenerator:
         prompt = self._build_dialogue_prompt(npc_id, player_input, memories, context)
 
         # Call API
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        dialogue = response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229", # Updated model name
+                max_tokens=500,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            dialogue = response.content[0].text
+        except Exception as e:
+            print(f"AI Generation failed: {e}")
+            dialogue = "..."
 
         # Cache result
         self.dialogue_cache.cache_response(player_input, context, dialogue)
 
         # Store in dialogue history
-        from aurora_engine.database.db_manager import DatabaseManager
         self.db.execute("""
             INSERT INTO dialogue_history (npc_id, player_line, npc_line, context, timestamp)
             VALUES (?, ?, ?, ?, ?)
@@ -64,6 +70,10 @@ class AIContentGenerator:
         """Build prompt for dialogue generation."""
         # Get NPC profile
         npc_data = self.db.fetch_one("SELECT * FROM npcs WHERE npc_id = ?", (npc_id,))
+        
+        if not npc_data:
+            # Fallback if NPC not in DB
+            npc_data = {'name': 'Unknown', 'personality': 'Neutral', 'background': 'Unknown'}
 
         prompt = f"""You are {npc_data['name']}, an NPC in a fantasy RPG.
 
@@ -105,15 +115,23 @@ Respond as this character would, staying in character. Keep response under 100 w
 Return JSON with: title, description, objectives (list), rewards (list).
 Keep it concise and fitting a fantasy RPG setting."""
 
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        quest_data = json.loads(response.content[0].text)
+        try:
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            quest_data = json.loads(response.content[0].text)
+        except Exception as e:
+            print(f"Quest Generation failed: {e}")
+            quest_data = {
+                "title": "Generic Quest",
+                "description": "Something went wrong generating this quest.",
+                "objectives": ["Report bug"],
+                "rewards": []
+            }
 
         # Cache
         self.db.execute("""

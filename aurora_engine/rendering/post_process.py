@@ -1,6 +1,7 @@
 # aurora_engine/rendering/post_process.py
 
-from panda3d.core import FilterManager, Texture, Shader
+from panda3d.core import Texture, Shader
+from direct.filter.FilterManager import FilterManager
 
 class PostProcessEffect:
     """
