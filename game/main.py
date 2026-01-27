@@ -128,9 +128,9 @@ class RPGGame(Application):
 if __name__ == "__main__":
     config_data = {
         'rendering': {
-            'width': 1920,
-            'height': 1080,
-            'title': 'My RPG Game',
+            'width': 1280,
+            'height': 720,
+            'title': 'GTA VI',
         },
         'database': {
             'path': 'game.db'

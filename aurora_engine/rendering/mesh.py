@@ -99,33 +99,33 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
 
     # Vertices (24 vertices for proper normals per face)
     vertices = [
-        # Front face
+        # Front face (Y+)
+        [-s, s, -s], [s, s, -s], [s, s, s], [-s, s, s],
+        # Back face (Y-)
+        [s, -s, -s], [-s, -s, -s], [-s, -s, s], [s, -s, s],
+        # Top face (Z+)
         [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
-        # Back face
-        [-s, -s, -s], [-s, s, -s], [s, s, -s], [s, -s, -s],
-        # Top face
-        [-s, s, -s], [-s, s, s], [s, s, s], [s, s, -s],
-        # Bottom face
-        [-s, -s, -s], [s, -s, -s], [s, -s, s], [-s, -s, s],
-        # Right face
+        # Bottom face (Z-)
+        [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
+        # Right face (X+)
         [s, -s, -s], [s, s, -s], [s, s, s], [s, -s, s],
-        # Left face
-        [-s, -s, -s], [-s, -s, s], [-s, s, s], [-s, s, -s],
+        # Left face (X-)
+        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, -s, s],
     ]
 
     # Normals
     normals = [
-        # Front
-        [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1],
-        # Back
-        [0, 0, -1], [0, 0, -1], [0, 0, -1], [0, 0, -1],
-        # Top
+        # Front (Y+)
         [0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0],
-        # Bottom
+        # Back (Y-)
         [0, -1, 0], [0, -1, 0], [0, -1, 0], [0, -1, 0],
-        # Right
+        # Top (Z+)
+        [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1],
+        # Bottom (Z-)
+        [0, 0, -1], [0, 0, -1], [0, 0, -1], [0, 0, -1],
+        # Right (X+)
         [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0],
-        # Left
+        # Left (X-)
         [-1, 0, 0], [-1, 0, 0], [-1, 0, 0], [-1, 0, 0],
     ]
 
@@ -157,20 +157,20 @@ def create_sphere_mesh(radius: float = 1.0, segments: int = 32, rings: int = 16)
     uvs = []
     indices = []
 
-    # Generate vertices
+    # Generate vertices (Z-up)
     for ring in range(rings + 1):
-        theta = ring * np.pi / rings
-        sin_theta = np.sin(theta)
-        cos_theta = np.cos(theta)
+        phi = ring * np.pi / rings # 0 to pi (top to bottom)
+        sin_phi = np.sin(phi)
+        cos_phi = np.cos(phi)
 
         for seg in range(segments + 1):
-            phi = seg * 2.0 * np.pi / segments
-            sin_phi = np.sin(phi)
-            cos_phi = np.cos(phi)
+            theta = seg * 2.0 * np.pi / segments # 0 to 2pi (around Z)
+            sin_theta = np.sin(theta)
+            cos_theta = np.cos(theta)
 
-            x = sin_theta * cos_phi
-            y = cos_theta
-            z = sin_theta * sin_phi
+            x = sin_phi * cos_theta
+            y = sin_phi * sin_theta
+            z = cos_phi
 
             vertices.append([x * radius, y * radius, z * radius])
             normals.append([x, y, z])
@@ -184,8 +184,8 @@ def create_sphere_mesh(radius: float = 1.0, segments: int = 32, rings: int = 16)
             next_ring = current + segments + 1
             next_both = next_ring + 1
 
-            indices.extend([current, next_ring, next_seg])
-            indices.extend([next_seg, next_ring, next_both])
+            indices.extend([current, next_seg, next_ring])
+            indices.extend([next_seg, next_both, next_ring])
 
     mesh.vertices = np.array(vertices, dtype=np.float32)
     mesh.normals = np.array(normals, dtype=np.float32)
@@ -198,31 +198,32 @@ def create_sphere_mesh(radius: float = 1.0, segments: int = 32, rings: int = 16)
 
 
 def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
-    """Create a plane mesh."""
+    """Create a plane mesh (XY plane, Z-up)."""
     mesh = Mesh("Plane")
 
     w = width / 2.0
     h = height / 2.0
 
+    # XY Plane (Z=0)
     vertices = [
-        [-w, 0, -h],
-        [w, 0, -h],
-        [w, 0, h],
-        [-w, 0, h],
+        [-w, h, 0],  # Top-Left
+        [w, h, 0],   # Top-Right
+        [w, -h, 0],  # Bottom-Right
+        [-w, -h, 0], # Bottom-Left
     ]
 
     normals = [
-        [0, 1, 0],
-        [0, 1, 0],
-        [0, 1, 0],
-        [0, 1, 0],
+        [0, 0, 1],
+        [0, 0, 1],
+        [0, 0, 1],
+        [0, 0, 1],
     ]
 
     uvs = [
-        [0, 0],
-        [1, 0],
-        [1, 1],
         [0, 1],
+        [1, 1],
+        [1, 0],
+        [0, 0],
     ]
 
     indices = [0, 1, 2, 0, 2, 3]
