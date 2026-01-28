@@ -21,8 +21,9 @@ class Rifted(Application):
 
     def initialize_game(self):
         """Game-specific initialization."""
-        # Initialize Database
-        self.db_manager = DatabaseManager(self.config.get('database.path', 'game.db'))
+        # Initialize Database (MySQL)
+        db_config = self.config.get('database', {})
+        self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         
         # Ensure Schema
@@ -103,10 +104,14 @@ if __name__ == "__main__":
             'title': 'Rifted',
         },
         'database': {
-            'path': 'game.db'
+            'host': 'localhost',
+            'user': 'root',
+            'password': '', # Set your MySQL password here
+            'database': 'rifted_db',
+            'port': 3306
         }
     }
-    
+
     # Write config to file so Application loads it correctly
     with open("config.json", "w") as f:
         json.dump(config_data, f, indent=2)

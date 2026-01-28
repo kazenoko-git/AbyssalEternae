@@ -5,6 +5,10 @@
     "title": "World Gen Test"
   },
   "database": {
-    "path": "world_gen_test.db"
+    "host": "localhost",
+    "user": "root",
+    "password": "CeneX_1234",
+    "database": "rifted_test_db",
+    "port": 3306
   }
 }

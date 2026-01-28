@@ -120,6 +120,10 @@ class Renderer:
                 else:
                     # Apply simple color from MeshRenderer component
                     mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
+            
+            # Apply transparency if needed (for fade-in)
+            if mesh_renderer.alpha < 1.0:
+                mesh_renderer._node_path.setAlphaScale(mesh_renderer.alpha)
 
     def end_frame(self):
         """Finalize and present frame."""

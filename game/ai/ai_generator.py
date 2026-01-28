@@ -58,8 +58,8 @@ class AIContentGenerator:
 
         # Store in dialogue history
         self.db.execute("""
-            INSERT INTO dialogue_history (npc_id, player_line, npc_line, context, timestamp)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO dialogue_history (npc_id, player_line, npc_line, context_json, timestamp)
+            VALUES (%s, %s, %s, %s, %s)
         """, (npc_id, player_input, dialogue, json.dumps(context), int(time.time())))
         self.db.commit()
 
@@ -69,7 +69,7 @@ class AIContentGenerator:
                                memories: List[Dict], context: Dict) -> str:
         """Build prompt for dialogue generation."""
         # Get NPC profile
-        npc_data = self.db.fetch_one("SELECT * FROM npcs WHERE npc_id = ?", (npc_id,))
+        npc_data = self.db.fetch_one("SELECT * FROM npcs WHERE npc_id = %s", (npc_id,))
         
         if not npc_data:
             # Fallback if NPC not in DB
@@ -77,8 +77,8 @@ class AIContentGenerator:
 
         prompt = f"""You are {npc_data['name']}, an NPC in a fantasy RPG.
 
-Personality: {npc_data['personality']}
-Background: {npc_data['background']}
+Personality: {npc_data['personality_json']}
+Background: {npc_data['role']}
 
 Recent memories:
 """
@@ -104,7 +104,7 @@ Respond as this character would, staying in character. Keep response under 100 w
         cache_key = f"{quest_type}_{difficulty}"
         cached = self.db.fetch_one("""
             SELECT generated_content FROM ai_cache
-            WHERE content_type = 'quest' AND prompt_hash = ?
+            WHERE content_type = 'quest' AND prompt_hash = %s
         """, (cache_key,))
 
         if cached:
@@ -136,7 +136,7 @@ Keep it concise and fitting a fantasy RPG setting."""
         # Cache
         self.db.execute("""
             INSERT INTO ai_cache (content_type, prompt_hash, generated_content, created_at)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
         """, ('quest', cache_key, json.dumps(quest_data), int(time.time())))
         self.db.commit()
 

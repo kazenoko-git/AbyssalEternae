@@ -3,6 +3,7 @@
 import numpy as np
 from panda3d.core import *
 from aurora_engine.rendering.mesh import Mesh
+import weakref
 
 
 class PandaBackend:
@@ -17,8 +18,8 @@ class PandaBackend:
         self.scene_graph = None
         self.base = None
         
-        # Cache for converted meshes
-        self._mesh_cache = {}
+        # Use a WeakKeyDictionary to prevent memory leaks from procedural meshes
+        self._mesh_cache = weakref.WeakKeyDictionary()
 
     def initialize(self):
         """Initialize Panda3D."""

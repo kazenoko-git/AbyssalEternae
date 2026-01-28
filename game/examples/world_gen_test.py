@@ -33,12 +33,21 @@ class WorldGenTest(Application):
 
     def initialize_game(self):
         """Test initialization."""
-        # Initialize Database (Test DB)
-        db_path = 'world_gen_test.db'
-        # if os.path.exists(db_path):
-        #     os.remove(db_path) 
+        # Initialize Database (MySQL)
+        # Use the config passed to Application
+        db_config = self.config.get('database', {})
+        
+        # Fallback if config is missing (e.g. running script directly without config file)
+        if not db_config:
+             db_config = {
+                'host': 'localhost',
+                'user': 'root',
+                'password': 'CeneX_1234',
+                'database': 'rifted_test_db',
+                'port': 3306
+            }
             
-        self.db_manager = DatabaseManager(db_path)
+        self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         
         # Ensure Schema
@@ -68,12 +77,12 @@ class WorldGenTest(Application):
         
         # Chunk Management
         self.loaded_chunks: Dict[Tuple[int, int], list] = {} 
-        self.pending_chunks: Set[Tuple[int, int]] = set()
-        self.data_futures = [] # Stage 1: DB/Logic
-        self.mesh_futures = [] # Stage 2: Mesh Gen
+        self.pending_data: Dict[Tuple[int, int], object] = {} # Coords -> Future
+        self.pending_meshes: Dict[Tuple[int, int], object] = {} # Coords -> Future
 
         self.load_radius = 6 
         self.unload_radius = 8
+        self.last_chunk_check = 0.0
 
         # Load Test World Metadata
         self._load_world_meta()
@@ -113,8 +122,48 @@ class WorldGenTest(Application):
         if hasattr(self, 'camera_controller'):
             self.camera_controller.update(dt)
             
-            # Chunk Management
-            self._manage_chunks()
+            # Chunk Management (Throttled)
+            self.last_chunk_check += dt
+            if self.last_chunk_check > 0.5: # Check every 0.5s
+                self._manage_chunks()
+                self.last_chunk_check = 0.0
+            else:
+                # Still process futures every frame to avoid stalls
+                self._process_futures()
+
+    def _process_futures(self):
+        """Process completed futures."""
+        # 4. Process Stage 1 Futures (Data Gen)
+        completed_data = []
+        for coords, future in self.pending_data.items():
+            if future.done():
+                try:
+                    region_data = future.result()
+                    # Start Stage 2: Mesh Gen
+                    mesh_future = self.mesh_executor.submit(generate_chunk_meshes, region_data)
+                    self.pending_meshes[coords] = mesh_future
+                except Exception as e:
+                    print(f"Chunk data generation failed for {coords}: {e}")
+                completed_data.append(coords)
+                
+        for coords in completed_data:
+            del self.pending_data[coords]
+                
+        # 5. Process Stage 2 Futures (Mesh Gen)
+        completed_meshes = []
+        for coords, future in self.pending_meshes.items():
+            if future.done():
+                try:
+                    meshes = future.result()
+                    # Re-fetch region data from DB (cached) to pass to instantiate
+                    region_data = self.world_generator.generate_region("dim_test", coords[0], coords[1])
+                    self._instantiate_chunk(region_data, meshes, fade_in=True)
+                except Exception as e:
+                    print(f"Chunk mesh generation failed for {coords}: {e}")
+                completed_meshes.append(coords)
+                
+        for coords in completed_meshes:
+            del self.pending_meshes[coords]
 
     def _manage_chunks(self):
         """Handle loading and unloading of chunks."""
@@ -139,50 +188,24 @@ class WorldGenTest(Application):
             self._unload_chunk(coords)
             
         # 3. Load new chunks (Stage 1)
-        max_concurrent_loads = 16 # Increased limit
-        current_loads = len(self.data_futures) + len(self.mesh_futures)
+        max_concurrent_loads = 16 
+        current_loads = len(self.pending_data) + len(self.pending_meshes)
         
         for coords in needed_chunks:
             if current_loads >= max_concurrent_loads:
                 break
                 
-            if coords not in self.loaded_chunks and coords not in self.pending_chunks:
+            if coords not in self.loaded_chunks and coords not in self.pending_data and coords not in self.pending_meshes:
                 self._request_chunk_load(coords)
                 current_loads += 1
-                
-        # 4. Process Stage 1 Futures (Data Gen)
-        for i in range(len(self.data_futures) - 1, -1, -1):
-            future = self.data_futures[i]
-            if future.done():
-                try:
-                    region_data = future.result()
-                    # Start Stage 2: Mesh Gen
-                    mesh_future = self.mesh_executor.submit(generate_chunk_meshes, region_data)
-                    self.mesh_futures.append((region_data, mesh_future))
-                except Exception as e:
-                    print(f"Chunk data generation failed: {e}")
-                self.data_futures.pop(i)
-                
-        # 5. Process Stage 2 Futures (Mesh Gen)
-        for i in range(len(self.mesh_futures) - 1, -1, -1):
-            region_data, future = self.mesh_futures[i]
-            if future.done():
-                try:
-                    meshes = future.result()
-                    self._instantiate_chunk(region_data, meshes, fade_in=True)
-                except Exception as e:
-                    print(f"Chunk mesh generation failed: {e}")
-                finally:
-                    coords = (region_data['coordinates_x'], region_data['coordinates_y'])
-                    if coords in self.pending_chunks:
-                        self.pending_chunks.remove(coords)
-                self.mesh_futures.pop(i)
+        
+        # Process futures immediately too
+        self._process_futures()
 
     def _request_chunk_load(self, coords: Tuple[int, int]):
         """Start async generation."""
-        self.pending_chunks.add(coords)
         future = self.world_generator.generate_region_async("dim_test", coords[0], coords[1])
-        self.data_futures.append(future)
+        self.pending_data[coords] = future
 
     def _unload_chunk(self, coords: Tuple[int, int]):
         """Destroy entities in a chunk."""
@@ -292,7 +315,11 @@ if __name__ == "__main__":
             'title': 'World Gen Test',
         },
         'database': {
-            'path': 'world_gen_test.db'
+            'host': 'localhost',
+            'user': 'root',
+            'password': 'CeneX_1234', # Set your MySQL password here
+            'database': 'rifted_test_db',
+            'port': 3306
         }
     }
     

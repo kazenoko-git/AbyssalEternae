@@ -9,3 +9,7 @@ class Component:
     def __init__(self):
         self.entity = None  # Back-reference to owner
         self.enabled = True
+
+    def on_destroy(self):
+        """Called when the component or its entity is destroyed. Override to clean up resources."""
+        pass

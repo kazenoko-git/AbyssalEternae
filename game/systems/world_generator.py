@@ -24,12 +24,15 @@ class WorldGenerator:
         self.region_size = 100.0 # World units per region
         self.terrain_resolution = 20 # Higher resolution for better mountains
         self.executor = ThreadPoolExecutor(max_workers=2) # Background generation
+        
+        # In-memory cache for generated regions to reduce DB hits
+        self.known_regions: Dict[str, Dict] = {}
 
     def get_or_create_dimension(self, dimension_id: str, seed: int) -> Dict:
         """Retrieve a dimension or generate it if it doesn't exist."""
         
         # Check DB
-        dim = self.db.fetch_one("SELECT * FROM dimensions WHERE dimension_id = ?", (dimension_id,))
+        dim = self.db.fetch_one("SELECT * FROM dimensions WHERE dimension_id = %s", (dimension_id,))
         if dim:
             return dict(dim)
 
@@ -54,11 +57,11 @@ class WorldGenerator:
         # 3. Save to DB
         self.db.execute("""
             INSERT INTO dimensions (dimension_id, name, seed, physics_rules_json, visual_style_json, generated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (dimension_id, name, seed, json.dumps(physics), json.dumps(visuals), int(time.time())))
         self.db.commit()
         
-        return self.db.fetch_one("SELECT * FROM dimensions WHERE dimension_id = ?", (dimension_id,))
+        return self.db.fetch_one("SELECT * FROM dimensions WHERE dimension_id = %s", (dimension_id,))
 
     def generate_region_async(self, dimension_id: str, x: int, y: int):
         """Submit a region generation task to the background thread."""
@@ -68,16 +71,16 @@ class WorldGenerator:
         """Generate a specific chunk/region within a dimension."""
         region_id = f"{dimension_id}_{x}_{y}"
         
-        # Check DB (Thread-safe read usually ok for SQLite if WAL enabled, but here we rely on simple locking or just risk it for read)
-        # Ideally, db_manager should handle threading. For this prototype, we assume it's okay or we create a new connection per thread.
-        # SQLite objects cannot be shared across threads in older Python versions, but check_same_thread=False allows it.
-        # Assuming DatabaseManager handles this or we are lucky. 
-        # To be safe, let's create a local connection if needed, but self.db is shared.
-        # Let's assume self.db is thread-safe enough for now (using locks inside execute/fetch if implemented, or Python's GIL helps).
+        # Check Memory Cache
+        if region_id in self.known_regions:
+            return self.known_regions[region_id]
         
-        region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = ?", (region_id,))
+        # Check DB
+        region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
         if region:
-            return dict(region)
+            region_dict = dict(region)
+            self.known_regions[region_id] = region_dict # Cache it
+            return region_dict
             
         # Get Dimension Context
         dim = self.get_or_create_dimension(dimension_id, 0) # Seed 0 fallback if not found, but should be found
@@ -140,11 +143,17 @@ class WorldGenerator:
         # Save Region
         self.db.execute("""
             INSERT INTO regions (region_id, dimension_id, coordinates_x, coordinates_y, biome_type, entities_json, is_generated, heightmap_data)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
         """, (region_id, dimension_id, x, y, biome, json.dumps(entities), json.dumps(heightmap_data.tolist())))
         self.db.commit()
         
-        return self.db.fetch_one("SELECT * FROM regions WHERE region_id = ?", (region_id,))
+        # Fetch and Cache
+        new_region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
+        if new_region:
+            region_dict = dict(new_region)
+            self.known_regions[region_id] = region_dict
+            return region_dict
+        return None
 
     def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int) -> np.ndarray:
         """Generate a heightmap for a specific region."""
