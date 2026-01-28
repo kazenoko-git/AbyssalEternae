@@ -6,9 +6,9 @@ A 3D stylized procedural RPG built in Python using a customised fork of Panda3D
 - Multiverse dimension system
 - AI-generated worlds, NPCs, quests, bosses
 - Offline cached content
-- SQLite world persistence
+- MySQL world persistence
 - Stylized low-poly visuals
-- Procedural music and voice dialogue
+- Procedural voice dialogue
 - Performance-optimized chunk loading
 
 ## Tech Stack
