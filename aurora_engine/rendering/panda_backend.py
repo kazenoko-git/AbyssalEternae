@@ -18,8 +18,8 @@ class PandaBackend:
         self.scene_graph = None
         self.base = None
         
-        # Use a WeakKeyDictionary to prevent memory leaks from procedural meshes
-        self._mesh_cache = weakref.WeakKeyDictionary()
+        # Use a standard dictionary for explicit control
+        self._mesh_cache = {}
 
     def initialize(self):
         """Initialize Panda3D."""
@@ -105,6 +105,11 @@ class PandaBackend:
             
         geom_node = self._mesh_cache[mesh]
         return NodePath(geom_node)
+        
+    def unload_mesh(self, mesh: Mesh):
+        """Explicitly remove a mesh from the cache."""
+        if mesh in self._mesh_cache:
+            del self._mesh_cache[mesh]
 
     def _upload_mesh(self, mesh: Mesh):
         """Convert Mesh to Panda3D GeomNode."""

@@ -5,12 +5,13 @@ import numpy as np
 from game.utils.terrain import create_terrain_mesh_from_heightmap
 from game.utils.tree_generator import create_procedural_tree_mesh
 from game.utils.rock_generator import create_procedural_rock_mesh
-from game.world_gen.structure_generator import StructureGenerator
+from game.world_gen.structure_generator import StructureSelector
 
 def generate_chunk_meshes(region_data):
     """
     Worker function to generate meshes for a chunk in a background thread.
     Returns a dictionary of { 'terrain': Mesh, 'props': [ (entity_data, Mesh) ] }
+    For model-based entities, Mesh will be None, and entity_data will contain 'model_path'.
     """
     result = {
         'terrain': None,
@@ -20,8 +21,6 @@ def generate_chunk_meshes(region_data):
     # 1. Terrain Mesh
     if 'heightmap_data' in region_data and region_data['heightmap_data']:
         heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
-        # Use higher resolution for mesh generation if available
-        # Assuming 100.0 region size
         cell_size = 100.0 / (heightmap.shape[0]-1)
         result['terrain'] = create_terrain_mesh_from_heightmap(heightmap, cell_size=cell_size)
         
@@ -47,11 +46,12 @@ def generate_chunk_meshes(region_data):
                 mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
         
         elif entity_data.get('type') == 'structure':
-            # Generate procedural building
+            # Use Model Path
             style = entity_data.get('style', 'Village')
-            mesh = StructureGenerator.generate_building(seed, style=style)
+            model_path = StructureSelector.get_structure_model(seed, style=style)
+            entity_data['model_path'] = model_path
+            # Mesh is None, main thread will load model
             
-        if mesh:
-            result['props'].append((entity_data, mesh))
+        result['props'].append((entity_data, mesh))
             
     return result

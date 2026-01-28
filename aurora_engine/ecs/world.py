@@ -30,7 +30,10 @@ class World:
             for component in entity.components.values():
                 if hasattr(component, 'on_destroy'):
                     component.on_destroy()
+                # Break circular reference
+                component.entity = None
 
+            entity.components.clear()
             self.entities.remove(entity)
             self._invalidate_cache()
 

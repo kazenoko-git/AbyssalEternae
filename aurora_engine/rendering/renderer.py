@@ -6,7 +6,7 @@ from aurora_engine.rendering.panda_backend import PandaBackend
 from aurora_engine.camera.camera import Camera
 from aurora_engine.ecs.world import World
 from aurora_engine.scene.transform import Transform
-from aurora_engine.rendering.mesh import MeshRenderer
+from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from panda3d.core import Vec4
 
 
@@ -101,8 +101,23 @@ class Renderer:
         # Ensure we have a NodePath for this entity
         # We store it on the MeshRenderer component for persistence
         if not hasattr(mesh_renderer, '_node_path') or mesh_renderer._node_path is None:
+            # Check if we have a mesh object or a model path
             if mesh_renderer.mesh:
                 mesh_renderer._node_path = self.backend.create_mesh_node(mesh_renderer.mesh)
+            elif hasattr(mesh_renderer, 'model_path') and mesh_renderer.model_path:
+                # Load model from file
+                # Use Panda3D loader directly for now
+                try:
+                    # Assuming assets are in a known location or path is relative to main
+                    # For placeholder, we might need to handle missing files
+                    mesh_renderer._node_path = self.backend.base.loader.loadModel(mesh_renderer.model_path)
+                except Exception as e:
+                    print(f"Failed to load model {mesh_renderer.model_path}: {e}")
+                    # Fallback to cube
+                    from aurora_engine.rendering.mesh import create_cube_mesh
+                    mesh_renderer._node_path = self.backend.create_mesh_node(create_cube_mesh())
+            
+            if mesh_renderer._node_path:
                 mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
         
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
@@ -124,6 +139,10 @@ class Renderer:
             # Apply transparency if needed (for fade-in)
             if mesh_renderer.alpha < 1.0:
                 mesh_renderer._node_path.setAlphaScale(mesh_renderer.alpha)
+
+    def unload_mesh(self, mesh: Mesh):
+        """Unload a mesh from the backend."""
+        self.backend.unload_mesh(mesh)
 
     def end_frame(self):
         """Finalize and present frame."""

@@ -1,6 +1,6 @@
 # game/systems/world_gen/civilization_generator.py
 
-from game.utils.terrain import perlin_noise_2d
+from game.utils.terrain import perlin_noise_2d, ridged_noise_2d
 import random
 import numpy as np
 
@@ -18,6 +18,10 @@ class CivilizationGenerator:
         Determine if a settlement exists at this location.
         """
         biome = biome_data['biome']
+        
+        # Initialize defaults
+        is_city = False
+        is_village = False
         
         # 1. Check Biome Suitability
         if biome in ["Ocean", "Coast", "Tundra", "Taiga", "Volcanic"]: # Exclude more biomes
@@ -46,9 +50,6 @@ class CivilizationGenerator:
         # Check distance to this center
         dist = ((x - center_x)**2 + (y - center_y)**2)**0.5
         
-        is_city = False
-        is_village = False
-        
         if dist < 100.0: # Increased radius for settlement detection
             if civ_score > 0.6:
                 is_city = True
@@ -59,26 +60,31 @@ class CivilizationGenerator:
 
         return {'is_city': is_city, 'is_village': is_village}
 
-    def get_path_density(self, x: float, y: float) -> float:
+    def get_path_value(self, x: float, y: float, height: float = 0.0) -> float:
         """
-        Returns a value 0.0-1.0 indicating likelihood of a path.
+        Returns a value 0.0-1.0 indicating if a path exists here.
+        1.0 = Center of path, 0.0 = No path.
         """
-        # Paths connect high civ areas
-        # Use Perlin noise for smoother paths
-        path_noise = perlin_noise_2d(x, y, seed=self.seed + 600, octaves=3, scale=0.005)
+        # Avoid Mountains and Water
+        if height > 8.0 or height < -1.0:
+            return 0.0
+            
+        # Use Ridged Noise for "vein-like" paths
+        # Scale 0.002 means paths are ~500 units apart
+        path_noise = ridged_noise_2d(x, y, seed=self.seed + 600, octaves=3, scale=0.002)
+        
+        # Ridged noise returns 0.0 to 1.0, where 1.0 is the ridge peak.
+        # We want paths at the peaks.
+        
+        # Threshold: Only values > 0.95 are paths (thin lines)
+        if path_noise > 0.95:
+            # Normalize 0.95-1.0 to 0.0-1.0
+            val = (path_noise - 0.95) / 0.05
+            
+            # Modulate by height gradient? 
+            # For now, just hard cutoff for mountains handled above.
+            return val
 
-        # Paths should be more common near settlements
-        # We need to query nearby settlements. For now, a simple threshold.
-
-        # Normalize noise to 0-1 range
-        path_val = (path_noise + 1.0) / 2.0
-
-        # Make paths appear in "valleys" of the noise
-        path_val = 1.0 - path_val
-
-        # Increase path density threshold
-        if path_val > 0.7:
-            return path_val * 0.5 # Max 0.5 density for visual distinction
         return 0.0
 
     def generate_settlement_layout(self, center_x: float, center_y: float, settlement_type: str) -> list:
@@ -97,12 +103,12 @@ class CivilizationGenerator:
             
             buildings.append({
                 "type": "structure",
-                "model": "house",
+                "model": "house", # Placeholder, will be replaced by StructureSelector
                 "x": bx,
                 "y": by,
                 "z": 0, # Clamped later
                 "scale": rng.uniform(0.8, 1.2),
-                "style": settlement_type
+                "style": "City" if settlement_type == "city" else "Village"
             })
             
         return buildings
