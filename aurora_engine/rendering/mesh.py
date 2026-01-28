@@ -85,11 +85,18 @@ class MeshRenderer(Component):
         self.material = material
         self.color = color # Simple color override if no material
         self.alpha = 1.0 # For fade-in effects
+        self._node_path = None # Handle to Panda3D node
 
         # Rendering settings
         self.cast_shadows = True
         self.receive_shadows = True
         self.visible = True
+
+    def on_destroy(self):
+        """Clean up Panda3D node when component is destroyed."""
+        if self._node_path:
+            self._node_path.removeNode()
+            self._node_path = None
 
 
 # Primitive mesh generators

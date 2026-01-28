@@ -34,15 +34,12 @@ class WorldGenTest(Application):
     def initialize_game(self):
         """Test initialization."""
         # Initialize Database (MySQL)
-        # Use the config passed to Application
         db_config = self.config.get('database', {})
-        
-        # Fallback if config is missing (e.g. running script directly without config file)
         if not db_config:
              db_config = {
                 'host': 'localhost',
                 'user': 'root',
-                'password': 'CeneX_1234',
+                'password': '',
                 'database': 'rifted_test_db',
                 'port': 3306
             }
@@ -169,9 +166,45 @@ class WorldGenTest(Application):
         """Handle loading and unloading of chunks."""
         cam_pos = self.camera_controller.camera.transform.get_world_position()
         
+        # Get camera forward vector (approximate from direction)
+        # FlyoverCameraController stores direction
+        cam_dir = self.camera_controller.direction
+        
         # 1. Determine needed chunks
         all_needed = self.world_generator.get_chunks_in_radius(cam_pos[0], cam_pos[1], self.load_radius)
-        all_needed.sort(key=lambda c: (c[0]*100 - cam_pos[0])**2 + (c[1]*100 - cam_pos[1])**2)
+        
+        # Sort by priority:
+        # 1. Distance to camera (closer is better)
+        # 2. Angle to camera direction (in front is better)
+        
+        def chunk_priority(coords):
+            chunk_world_x = coords[0] * 100.0
+            chunk_world_y = coords[1] * 100.0
+            
+            # Vector from camera to chunk
+            to_chunk = np.array([chunk_world_x - cam_pos[0], chunk_world_y - cam_pos[1], 0.0])
+            dist_sq = np.dot(to_chunk, to_chunk)
+            
+            if dist_sq < 0.001:
+                return -1000000 # Current chunk is highest priority
+                
+            # Normalize
+            dist = np.sqrt(dist_sq)
+            to_chunk /= dist
+            
+            # Dot product with camera direction
+            # 1.0 = directly in front, -1.0 = directly behind
+            dot = np.dot(to_chunk, cam_dir)
+            
+            # Score: Lower is better (sort key)
+            # We want high dot (front) and low dist to be low score.
+            # dist - (dot * weight)
+            # Weight determines how much we prefer "front" over "close".
+            # If weight is high, we load far-front chunks before near-back chunks.
+            
+            return dist - (dot * 200.0) 
+            
+        all_needed.sort(key=chunk_priority)
         needed_chunks = set(all_needed)
         
         # 2. Unload distant chunks
