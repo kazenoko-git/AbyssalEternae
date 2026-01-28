@@ -82,12 +82,10 @@ class WorldGenerator:
         print(f"Generating Region {region_id}: {biome}")
         
         # --- Terrain Heightmap Generation ---
-        # Vary terrain parameters based on biome
-        scale_mod = 1.0
-        if biome == "Volcanic": scale_mod = 1.5
-        elif biome == "Desert": scale_mod = 0.5
+        # REMOVED scale_mod from height generation to ensure seamless terrain
+        # Biome only affects props and coloring now
         
-        heightmap_data = self._generate_heightmap(dim_seed, x, y, scale_mod)
+        heightmap_data = self._generate_heightmap(dim_seed, x, y)
         
         # Generate Entities (Procedural Placement)
         entities = []
@@ -96,12 +94,18 @@ class WorldGenerator:
             prop_x = x * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
             prop_y = y * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
             
-            # Get height at prop position
-            # Use the composite height function directly for accuracy
-            prop_z = generate_composite_height(prop_x, prop_y, dim_seed) * scale_mod
+            # Get height at prop position using bilinear interpolation on the generated heightmap
+            # We need to construct a temporary region dict to use get_height_at_world_pos
+            temp_region_data = {
+                'coordinates_x': x,
+                'coordinates_y': y,
+                'heightmap_data': json.dumps(heightmap_data.tolist())
+            }
+            cell_size = self.region_size / self.terrain_resolution
+            prop_z = get_height_at_world_pos(prop_x, prop_y, temp_region_data, cell_size)
             
-            # Only spawn if above water
-            if prop_z > -1.0:
+            # Only spawn if above water level (e.g., -1.5)
+            if prop_z > -1.5:
                 # Determine prop type based on biome
                 model_type = "tree"
                 if biome == "Desert" or biome == "Volcanic":
@@ -130,10 +134,11 @@ class WorldGenerator:
         
         return self.db.fetch_one("SELECT * FROM regions WHERE region_id = ?", (region_id,))
 
-    def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int, scale_mod: float = 1.0) -> np.ndarray:
+    def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int) -> np.ndarray:
         """Generate a heightmap for a specific region."""
         
         # Heightmap grid size (e.g., 10x10 vertices for a 100x100 unit region)
+        # Add +1 to rows/cols to share vertices with neighbors
         rows = self.terrain_resolution + 1
         cols = self.terrain_resolution + 1
         
@@ -153,7 +158,8 @@ class WorldGenerator:
                 wy = world_origin_y + r * cell_world_size
                 
                 # Generate Composite Height (Base + Mountains + Detail)
-                height = generate_composite_height(wx, wy, dim_seed) * scale_mod
+                # Using world coordinates ensures seamless noise across chunk boundaries
+                height = generate_composite_height(wx, wy, dim_seed)
                 heightmap[r, c] = height
                 
         return heightmap

@@ -23,6 +23,25 @@ class SphereCollider(ColliderShape):
         self.radius = radius
 
 
+class HeightfieldCollider(ColliderShape):
+    """
+    Heightfield collider for terrain.
+    Expects a 2D numpy array of height values.
+    """
+    def __init__(self, heightmap: np.ndarray, scale: float = 1.0):
+        self.heightmap = heightmap
+        self.scale = scale
+
+
+class MeshCollider(ColliderShape):
+    """
+    Mesh-based collider (convex hull or triangle mesh).
+    """
+    def __init__(self, mesh, convex: bool = True):
+        self.mesh = mesh
+        self.convex = convex
+
+
 class Collider(Component):
     """
     Collider component.

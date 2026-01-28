@@ -11,8 +11,10 @@ from aurora_engine.database.schema import DatabaseSchema
 from game.utils.terrain import create_terrain_mesh_from_heightmap, get_height_at_world_pos
 from game.utils.tree_generator import create_procedural_tree_mesh
 from game.utils.rock_generator import create_procedural_rock_mesh
-from game.controllers.orbit_camera import OrbitCameraController
+from game.controllers.flyover_camera import FlyoverCameraController
 from aurora_engine.camera.camera import Camera
+from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider
+from aurora_engine.physics.collider import Collider
 import numpy as np
 import json
 import os
@@ -44,13 +46,15 @@ class WorldGenTest(Application):
         # Initialize World Generator
         self.world_generator = WorldGenerator(self.db_manager, self.ai_generator)
 
-        # Setup Orbit Camera
+        # Setup Flyover Camera
         camera = Camera()
-        camera.transform.set_world_position(np.array([0, 0, 50.0], dtype=np.float32))
+        # Start higher up
+        camera.transform.set_world_position(np.array([0, 0, 80.0], dtype=np.float32))
         
-        self.camera_controller = OrbitCameraController(camera)
-        self.camera_controller.radius = 200.0
-        self.camera_controller.height = 100.0
+        self.camera_controller = FlyoverCameraController(camera)
+        self.camera_controller.height = 80.0 
+        self.camera_controller.speed = 15.0
+        self.camera_controller.pitch = -15.0 # Look forward more
         self.renderer.register_camera(camera)
 
         # Load Test World
@@ -58,6 +62,9 @@ class WorldGenTest(Application):
         
         # Add basic lighting
         self._setup_lighting()
+        
+        # Track loaded chunks to avoid re-instantiating
+        self.loaded_chunk_coords = set()
 
     def _setup_lighting(self):
         """Setup basic scene lighting."""
@@ -81,6 +88,17 @@ class WorldGenTest(Application):
         super().update(dt, alpha)
         if hasattr(self, 'camera_controller'):
             self.camera_controller.update(dt)
+            
+            # Dynamic Chunk Loading
+            cam_pos = self.camera_controller.camera.transform.get_world_position()
+            # Increase load radius to see horizon
+            regions = self.world_generator.load_chunks_around_player("dim_test", cam_pos[0], cam_pos[1], radius=4)
+            
+            for region in regions:
+                coords = (region['coordinates_x'], region['coordinates_y'])
+                if coords not in self.loaded_chunk_coords:
+                    self._instantiate_region(region)
+                    self.loaded_chunk_coords.add(coords)
 
     def _load_world(self):
         """Load the procedural world."""
@@ -89,21 +107,7 @@ class WorldGenTest(Application):
         dim = self.world_generator.get_or_create_dimension("dim_test", seed)
         print(f"Generated Dimension: {dim['name']} (Seed: {seed})")
         
-        # 2. Generate Initial Regions around (0,0)
-        regions = self.world_generator.load_chunks_around_player("dim_test", 0, 0, radius=2)
-        
-        # 3. Instantiate Regions
-        for region in regions:
-            self._instantiate_region(region)
-            
-        # 4. Add Water Plane
-        water = self.world.create_entity()
-        wt = water.add_component(Transform())
-        wt.set_world_position(np.array([0, 0, -2.0], dtype=np.float32))
-        wt.local_scale = np.array([500.0, 500.0, 1.0], dtype=np.float32)
-        
-        water_mesh = create_plane_mesh(1.0, 1.0)
-        water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
+        # Initial load handled by update loop now
 
     def _instantiate_region(self, region_data: Dict):
         """Create entities for a region."""
@@ -123,6 +127,8 @@ class WorldGenTest(Application):
                 mesh = create_procedural_rock_mesh(seed, scale=scale)
                 # Rock mesh has vertex colors (grey variations), use white node color
                 e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
+                # Add Mesh Collider (Convex Hull)
+                e.add_component(Collider(MeshCollider(mesh, convex=True)))
                 
             elif entity_data['model'] == 'tree':
                 # Use Procedural Tree Generator with Biome variation
@@ -132,6 +138,8 @@ class WorldGenTest(Application):
                 
                 mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
                 e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
+                # Add Box Collider for Trunk (Simplified)
+                e.add_component(Collider(BoxCollider(np.array([0.5 * scale, 0.5 * scale, 4.0 * scale], dtype=np.float32))))
                 
         # Create Terrain
         if 'heightmap_data' in region_data and region_data['heightmap_data']:
@@ -148,6 +156,22 @@ class WorldGenTest(Application):
             
             # Use default white color so vertex colors show through
             ground.add_component(MeshRenderer(mesh=terrain_mesh, color=(1.0, 1.0, 1.0, 1.0)))
+            
+            # Add Heightfield Collider
+            ground.add_component(Collider(HeightfieldCollider(heightmap)))
+            
+        # Add Water Plane for this chunk (simplified, just a plane at Z=-2)
+        # In a real game, we'd have a single infinite water plane or shader
+        water = self.world.create_entity()
+        wt = water.add_component(Transform())
+        rx = region_data['coordinates_x'] * 100.0
+        ry = region_data['coordinates_y'] * 100.0
+        wt.set_world_position(np.array([rx + 50.0, ry + 50.0, -2.0], dtype=np.float32)) # Center of chunk
+        wt.local_scale = np.array([100.0, 100.0, 1.0], dtype=np.float32)
+        
+        water_mesh = create_plane_mesh(1.0, 1.0)
+        water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
+        water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
     
     def shutdown(self):
         """Cleanup."""

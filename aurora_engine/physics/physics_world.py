@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 import numpy as np
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.physics.rigidbody import RigidBody
-from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider
+from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider, HeightfieldCollider, MeshCollider
 from aurora_engine.scene.transform import Transform
 
 
@@ -132,8 +132,8 @@ class PhysicsWorld:
 
     def _create_bullet_shape(self, collider: Collider):
         """Create Bullet collision shape from Collider component."""
-        from panda3d.bullet import BulletBoxShape, BulletSphereShape
-        from panda3d.core import Vec3
+        from panda3d.bullet import BulletBoxShape, BulletSphereShape, BulletHeightfieldShape, BulletTriangleMeshShape, BulletTriangleMesh, BulletConvexHullShape
+        from panda3d.core import Vec3, PNMImage
         
         if isinstance(collider.shape, BoxCollider):
             # BoxCollider size is full extents, Bullet expects half-extents
@@ -142,6 +142,59 @@ class PhysicsWorld:
             
         elif isinstance(collider.shape, SphereCollider):
             return BulletSphereShape(collider.shape.radius)
+            
+        elif isinstance(collider.shape, HeightfieldCollider):
+            # Create heightfield from numpy array
+            heightmap = collider.shape.heightmap
+            rows, cols = heightmap.shape
+            
+            # Bullet expects a PNMImage or raw data.
+            # For simplicity, let's use the raw float array if possible, or construct a PNMImage.
+            # BulletHeightfieldShape(PNMImage image, float max_height, ZUp)
+            
+            # Normalize heightmap to 0..1 for image, then scale
+            min_h = np.min(heightmap)
+            max_h = np.max(heightmap)
+            range_h = max_h - min_h
+            if range_h == 0: range_h = 1.0
+            
+            img = PNMImage(cols, rows)
+            img.makeGrayscale()
+            
+            for y in range(rows):
+                for x in range(cols):
+                    val = (heightmap[y, x] - min_h) / range_h
+                    img.setGray(x, y, val)
+                    
+            shape = BulletHeightfieldShape(img, max_h, True) # ZUp
+            # We need to scale it to match world dimensions
+            # Image is 1 unit per pixel by default?
+            # We need to scale X/Y to match region size
+            # And Z to match height range
+            
+            # Note: BulletHeightfieldShape centers the field. We might need to offset it.
+            return shape
+            
+        elif isinstance(collider.shape, MeshCollider):
+            mesh = collider.shape.mesh
+            
+            if collider.shape.convex:
+                # Convex Hull
+                shape = BulletConvexHullShape()
+                for v in mesh.vertices:
+                    shape.addPoint(Vec3(v[0], v[1], v[2]))
+                return shape
+            else:
+                # Triangle Mesh
+                tm = BulletTriangleMesh()
+                for i in range(0, len(mesh.indices), 3):
+                    v0 = mesh.vertices[mesh.indices[i]]
+                    v1 = mesh.vertices[mesh.indices[i+1]]
+                    v2 = mesh.vertices[mesh.indices[i+2]]
+                    tm.addTriangle(Vec3(v0[0], v0[1], v0[2]), 
+                                   Vec3(v1[0], v1[1], v1[2]), 
+                                   Vec3(v2[0], v2[1], v2[2]))
+                return BulletTriangleMeshShape(tm, dynamic=False)
             
         return None
 
