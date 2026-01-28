@@ -5,6 +5,7 @@ import numpy as np
 from game.utils.terrain import create_terrain_mesh_from_heightmap
 from game.utils.tree_generator import create_procedural_tree_mesh
 from game.utils.rock_generator import create_procedural_rock_mesh
+from game.world_gen.structure_generator import StructureGenerator
 
 def generate_chunk_meshes(region_data):
     """
@@ -33,15 +34,22 @@ def generate_chunk_meshes(region_data):
         scale = entity_data.get('scale', 1.0)
         mesh = None
         
-        if entity_data['model'] == 'rock':
-            mesh = create_procedural_rock_mesh(seed, scale=scale)
-            
-        elif entity_data['model'] == 'tree':
-            tree_type = "Oak"
-            if biome == "Tundra": tree_type = "Pine"
-            elif biome == "Swamp": tree_type = "Willow"
-            
-            mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
+        if entity_data.get('type') == 'prop':
+            if entity_data['model'] == 'rock':
+                mesh = create_procedural_rock_mesh(seed, scale=scale)
+                
+            elif entity_data['model'] == 'tree':
+                tree_type = "Oak"
+                if "Tundra" in biome: tree_type = "Pine"
+                elif "Swamp" in biome: tree_type = "Willow"
+                elif "Jungle" in biome: tree_type = "Oak" 
+                
+                mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
+        
+        elif entity_data.get('type') == 'structure':
+            # Generate procedural building
+            style = entity_data.get('style', 'Village')
+            mesh = StructureGenerator.generate_building(seed, style=style)
             
         if mesh:
             result['props'].append((entity_data, mesh))

@@ -7,6 +7,20 @@ class DatabaseSchema:
     """
 
     @staticmethod
+    def drop_tables(db_manager):
+        """Drop all tables to reset the database."""
+        tables = [
+            "world_state", "player_saves", "regions", "npcs", "npc_memory", 
+            "dialogue_history", "ai_cache", "quests", "bosses", "dimensions"
+        ]
+        # Disable foreign key checks to avoid ordering issues
+        db_manager.execute("SET FOREIGN_KEY_CHECKS = 0")
+        for table in tables:
+            db_manager.execute(f"DROP TABLE IF EXISTS {table}")
+        db_manager.execute("SET FOREIGN_KEY_CHECKS = 1")
+        db_manager.commit()
+
+    @staticmethod
     def create_tables(db_manager):
         """Create all database tables."""
 
@@ -148,13 +162,7 @@ class DatabaseSchema:
             )
         """)
 
-        # Indexes (MySQL syntax is slightly different for IF NOT EXISTS on index, usually handled by CREATE INDEX directly or checking schema)
-        # Simple CREATE INDEX is fine if it doesn't exist, but MySQL throws error if exists.
-        # We can use a try-except block in db_manager or just ignore errors for now in this script.
-        # Or use: CREATE INDEX index_name ON table(col)
-        # MySQL 8.0+ supports IF NOT EXISTS? No.
-        # We will wrap these in try-except in the execution logic or just let them fail if they exist.
-        
+        # Indexes
         try:
             db_manager.execute("CREATE INDEX idx_npc_memory_npc ON npc_memory(npc_id)")
         except: pass
