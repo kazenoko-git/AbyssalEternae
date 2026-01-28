@@ -1,11 +1,12 @@
 # aurora_engine/resources/asset_loader.py
 
-from typing import Any
+from typing import Any, Optional
 import os
 import json
 from aurora_engine.rendering.mesh import Mesh, create_cube_mesh, create_sphere_mesh, create_plane_mesh
 from aurora_engine.rendering.shader import Shader
 from aurora_engine.rendering.material import Material
+from panda3d.core import NodePath
 
 
 class AssetLoader:
@@ -14,8 +15,24 @@ class AssetLoader:
     """
 
     @staticmethod
+    def load_model(path: str) -> Optional[NodePath]:
+        """
+        Load a 3D model using Panda3D's loader.
+        Supports .egg, .bam, .gltf, .obj (if plugins installed).
+        """
+        # Access global loader from ShowBase
+        try:
+            import builtins
+            if hasattr(builtins, 'base'):
+                # Panda3D loader caches automatically
+                return builtins.base.loader.loadModel(path)
+        except Exception as e:
+            print(f"Failed to load model {path}: {e}")
+        return None
+
+    @staticmethod
     def load_mesh(path: str) -> Mesh:
-        """Load a mesh from file."""
+        """Load a mesh from file (Legacy/Procedural fallback)."""
         # Simple procedural fallback for testing
         if path == "cube":
             return create_cube_mesh()
@@ -24,8 +41,9 @@ class AssetLoader:
         elif path == "plane":
             return create_plane_mesh()
             
-        # TODO: Implement OBJ/GLTF loading
-        # For now, return a cube as placeholder
+        # For actual files, we prefer load_model which returns a NodePath.
+        # If we need a Mesh object (raw data), we'd need to extract it from the NodePath.
+        # For now, we assume this is used for procedural fallbacks.
         print(f"Warning: Mesh loading not implemented for {path}, returning cube.")
         return create_cube_mesh()
 
