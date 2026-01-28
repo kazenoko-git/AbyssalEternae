@@ -84,6 +84,7 @@ class MeshRenderer(Component):
         self.mesh = mesh
         self.material = material
         self.color = color # Simple color override if no material
+        self.alpha = 1.0 # For fade-in effects
 
         # Rendering settings
         self.cast_shadows = True

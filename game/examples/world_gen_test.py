@@ -15,11 +15,15 @@ from game.controllers.flyover_camera import FlyoverCameraController
 from aurora_engine.camera.camera import Camera
 from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider
 from aurora_engine.physics.collider import Collider
+from game.utils.chunk_worker import generate_chunk_meshes
+from game.components.fade_in import FadeInEffect
+from game.systems.fade_in_system import FadeInSystem
 import numpy as np
 import json
 import os
 import time
-from typing import Dict
+from typing import Dict, Tuple, Set
+from concurrent.futures import ThreadPoolExecutor
 
 
 class WorldGenTest(Application):
@@ -31,8 +35,8 @@ class WorldGenTest(Application):
         """Test initialization."""
         # Initialize Database (Test DB)
         db_path = 'world_gen_test.db'
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        # if os.path.exists(db_path):
+        #     os.remove(db_path) 
             
         self.db_manager = DatabaseManager(db_path)
         self.db_manager.connect()
@@ -45,43 +49,63 @@ class WorldGenTest(Application):
         
         # Initialize World Generator
         self.world_generator = WorldGenerator(self.db_manager, self.ai_generator)
+        
+        # Mesh Generation Executor
+        self.mesh_executor = ThreadPoolExecutor(max_workers=4)
 
         # Setup Flyover Camera
         camera = Camera()
-        # Start higher up
         camera.transform.set_world_position(np.array([0, 0, 80.0], dtype=np.float32))
         
         self.camera_controller = FlyoverCameraController(camera)
         self.camera_controller.height = 80.0 
-        self.camera_controller.speed = 15.0
-        self.camera_controller.pitch = -15.0 # Look forward more
+        self.camera_controller.speed = 25.0 
+        self.camera_controller.pitch = -20.0 
         self.renderer.register_camera(camera)
-
-        # Load Test World
-        self._load_world()
         
-        # Add basic lighting
-        self._setup_lighting()
+        # Add Fade System
+        self.world.add_system(FadeInSystem())
         
-        # Track loaded chunks to avoid re-instantiating
-        self.loaded_chunk_coords = set()
+        # Chunk Management
+        self.loaded_chunks: Dict[Tuple[int, int], list] = {} 
+        self.pending_chunks: Set[Tuple[int, int]] = set()
+        self.data_futures = [] # Stage 1: DB/Logic
+        self.mesh_futures = [] # Stage 2: Mesh Gen
 
-    def _setup_lighting(self):
-        """Setup basic scene lighting."""
-        from panda3d.core import AmbientLight, DirectionalLight, Vec4
+        self.load_radius = 6 
+        self.unload_radius = 8
+
+        # Load Test World Metadata
+        self._load_world_meta()
+        
+        # Add basic lighting & Fog
+        self._setup_lighting_and_fog()
+        
+        # Load Initial World (Synchronous)
+        self._load_initial_world()
+
+    def _setup_lighting_and_fog(self):
+        """Setup basic scene lighting and fog."""
+        from panda3d.core import AmbientLight, DirectionalLight, Vec4, Fog
         
         # Ambient light
         alight = AmbientLight('alight')
-        alight.setColor(Vec4(0.3, 0.3, 0.3, 1))
+        alight.setColor(Vec4(0.4, 0.4, 0.4, 1))
         alnp = self.renderer.backend.scene_graph.attachNewNode(alight)
         self.renderer.backend.scene_graph.setLight(alnp)
         
         # Directional light
         dlight = DirectionalLight('dlight')
-        dlight.setColor(Vec4(0.9, 0.9, 0.9, 1))
+        dlight.setColor(Vec4(0.8, 0.8, 0.8, 1))
         dlnp = self.renderer.backend.scene_graph.attachNewNode(dlight)
         dlnp.setHpr(45, -60, 0)
         self.renderer.backend.scene_graph.setLight(dlnp)
+        
+        # Fog
+        fog = Fog("WorldFog")
+        fog.setColor(0.53, 0.8, 0.92) # Match Sky Blue background
+        fog.setExpDensity(0.002) 
+        self.renderer.backend.scene_graph.setFog(fog)
 
     def update(self, dt: float, alpha: float):
         """Override update to update camera controller."""
@@ -89,64 +113,134 @@ class WorldGenTest(Application):
         if hasattr(self, 'camera_controller'):
             self.camera_controller.update(dt)
             
-            # Dynamic Chunk Loading
-            cam_pos = self.camera_controller.camera.transform.get_world_position()
-            # Increase load radius to see horizon
-            regions = self.world_generator.load_chunks_around_player("dim_test", cam_pos[0], cam_pos[1], radius=4)
+            # Chunk Management
+            self._manage_chunks()
+
+    def _manage_chunks(self):
+        """Handle loading and unloading of chunks."""
+        cam_pos = self.camera_controller.camera.transform.get_world_position()
+        
+        # 1. Determine needed chunks
+        all_needed = self.world_generator.get_chunks_in_radius(cam_pos[0], cam_pos[1], self.load_radius)
+        all_needed.sort(key=lambda c: (c[0]*100 - cam_pos[0])**2 + (c[1]*100 - cam_pos[1])**2)
+        needed_chunks = set(all_needed)
+        
+        # 2. Unload distant chunks
+        chunks_to_unload = []
+        for coords in self.loaded_chunks:
+            chunk_world_x = coords[0] * 100.0
+            chunk_world_y = coords[1] * 100.0
+            dist = np.sqrt((chunk_world_x - cam_pos[0])**2 + (chunk_world_y - cam_pos[1])**2)
             
-            for region in regions:
-                coords = (region['coordinates_x'], region['coordinates_y'])
-                if coords not in self.loaded_chunk_coords:
-                    self._instantiate_region(region)
-                    self.loaded_chunk_coords.add(coords)
+            if dist > self.unload_radius * 100.0:
+                chunks_to_unload.append(coords)
+                
+        for coords in chunks_to_unload:
+            self._unload_chunk(coords)
+            
+        # 3. Load new chunks (Stage 1)
+        max_concurrent_loads = 16 # Increased limit
+        current_loads = len(self.data_futures) + len(self.mesh_futures)
+        
+        for coords in needed_chunks:
+            if current_loads >= max_concurrent_loads:
+                break
+                
+            if coords not in self.loaded_chunks and coords not in self.pending_chunks:
+                self._request_chunk_load(coords)
+                current_loads += 1
+                
+        # 4. Process Stage 1 Futures (Data Gen)
+        for i in range(len(self.data_futures) - 1, -1, -1):
+            future = self.data_futures[i]
+            if future.done():
+                try:
+                    region_data = future.result()
+                    # Start Stage 2: Mesh Gen
+                    mesh_future = self.mesh_executor.submit(generate_chunk_meshes, region_data)
+                    self.mesh_futures.append((region_data, mesh_future))
+                except Exception as e:
+                    print(f"Chunk data generation failed: {e}")
+                self.data_futures.pop(i)
+                
+        # 5. Process Stage 2 Futures (Mesh Gen)
+        for i in range(len(self.mesh_futures) - 1, -1, -1):
+            region_data, future = self.mesh_futures[i]
+            if future.done():
+                try:
+                    meshes = future.result()
+                    self._instantiate_chunk(region_data, meshes, fade_in=True)
+                except Exception as e:
+                    print(f"Chunk mesh generation failed: {e}")
+                finally:
+                    coords = (region_data['coordinates_x'], region_data['coordinates_y'])
+                    if coords in self.pending_chunks:
+                        self.pending_chunks.remove(coords)
+                self.mesh_futures.pop(i)
 
-    def _load_world(self):
-        """Load the procedural world."""
-        # 1. Get/Create Dimension with Random Seed
-        seed = int(time.time())
+    def _request_chunk_load(self, coords: Tuple[int, int]):
+        """Start async generation."""
+        self.pending_chunks.add(coords)
+        future = self.world_generator.generate_region_async("dim_test", coords[0], coords[1])
+        self.data_futures.append(future)
+
+    def _unload_chunk(self, coords: Tuple[int, int]):
+        """Destroy entities in a chunk."""
+        if coords in self.loaded_chunks:
+            entities = self.loaded_chunks[coords]
+            for entity in entities:
+                self.world.destroy_entity(entity)
+            del self.loaded_chunks[coords]
+
+    def _load_world_meta(self):
+        """Load/Create dimension metadata."""
+        seed = 12345 
         dim = self.world_generator.get_or_create_dimension("dim_test", seed)
-        print(f"Generated Dimension: {dim['name']} (Seed: {seed})")
-        
-        # Initial load handled by update loop now
+        print(f"Dimension: {dim['name']}")
 
-    def _instantiate_region(self, region_data: Dict):
-        """Create entities for a region."""
-        entities = json.loads(region_data['entities_json'])
-        biome = region_data.get('biome_type', 'Forest')
+    def _load_initial_world(self):
+        """Load the initial area synchronously."""
+        print("Loading initial world...")
+        # Load same radius as runtime to avoid gaps
+        regions = self.world_generator.load_chunks_around_player("dim_test", 0, 0, radius=self.load_radius)
         
-        for entity_data in entities:
+        for region in regions:
+            # We need meshes. Generate them synchronously here for simplicity, or reuse worker logic.
+            # Since this is init, blocking is fine.
+            meshes = generate_chunk_meshes(region)
+            self._instantiate_chunk(region, meshes, fade_in=False) # No fade for initial load
+
+    def _instantiate_chunk(self, region_data: Dict, meshes: Dict, fade_in: bool = True):
+        """Create entities for a region using pre-generated meshes."""
+        coords = (region_data['coordinates_x'], region_data['coordinates_y'])
+        
+        if coords in self.loaded_chunks:
+            return
+            
+        chunk_entities = []
+        
+        # Props
+        for entity_data, mesh in meshes['props']:
             e = self.world.create_entity()
             t = e.add_component(Transform())
             t.set_world_position(np.array([entity_data['x'], entity_data['y'], entity_data['z']], dtype=np.float32))
             
-            seed = entity_data.get('seed', 0)
-            scale = entity_data.get('scale', 1.0)
+            # Visuals
+            e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
+            if fade_in:
+                e.add_component(FadeInEffect(duration=1.5))
             
+            # Colliders
             if entity_data['model'] == 'rock':
-                # Use Procedural Rock Generator
-                mesh = create_procedural_rock_mesh(seed, scale=scale)
-                # Rock mesh has vertex colors (grey variations), use white node color
-                e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
-                # Add Mesh Collider (Convex Hull)
                 e.add_component(Collider(MeshCollider(mesh, convex=True)))
-                
             elif entity_data['model'] == 'tree':
-                # Use Procedural Tree Generator with Biome variation
-                tree_type = "Oak"
-                if biome == "Tundra": tree_type = "Pine"
-                elif biome == "Swamp": tree_type = "Willow"
-                
-                mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
-                e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
-                # Add Box Collider for Trunk (Simplified)
+                scale = entity_data.get('scale', 1.0)
                 e.add_component(Collider(BoxCollider(np.array([0.5 * scale, 0.5 * scale, 4.0 * scale], dtype=np.float32))))
-                
-        # Create Terrain
-        if 'heightmap_data' in region_data and region_data['heightmap_data']:
-            heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
-            # Use higher resolution for mesh generation if available
-            terrain_mesh = create_terrain_mesh_from_heightmap(heightmap, cell_size=100.0 / (heightmap.shape[0]-1))
             
+            chunk_entities.append(e)
+                
+        # Terrain
+        if meshes['terrain']:
             ground = self.world.create_entity()
             gt = ground.add_component(Transform())
             
@@ -154,24 +248,34 @@ class WorldGenTest(Application):
             ry = region_data['coordinates_y'] * 100.0
             gt.set_world_position(np.array([rx, ry, 0], dtype=np.float32))
             
-            # Use default white color so vertex colors show through
-            ground.add_component(MeshRenderer(mesh=terrain_mesh, color=(1.0, 1.0, 1.0, 1.0)))
+            ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
+            if fade_in:
+                ground.add_component(FadeInEffect(duration=1.5))
             
-            # Add Heightfield Collider
-            ground.add_component(Collider(HeightfieldCollider(heightmap)))
+            # Heightfield Collider needs raw heightmap data
+            if 'heightmap_data' in region_data:
+                heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
+                ground.add_component(Collider(HeightfieldCollider(heightmap)))
             
-        # Add Water Plane for this chunk (simplified, just a plane at Z=-2)
-        # In a real game, we'd have a single infinite water plane or shader
+            chunk_entities.append(ground)
+            
+        # Water Plane
         water = self.world.create_entity()
         wt = water.add_component(Transform())
         rx = region_data['coordinates_x'] * 100.0
         ry = region_data['coordinates_y'] * 100.0
-        wt.set_world_position(np.array([rx + 50.0, ry + 50.0, -2.0], dtype=np.float32)) # Center of chunk
+        wt.set_world_position(np.array([rx + 50.0, ry + 50.0, -2.0], dtype=np.float32))
         wt.local_scale = np.array([100.0, 100.0, 1.0], dtype=np.float32)
         
         water_mesh = create_plane_mesh(1.0, 1.0)
         water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
         water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
+        if fade_in:
+            water.add_component(FadeInEffect(duration=1.5))
+        
+        chunk_entities.append(water)
+        
+        self.loaded_chunks[coords] = chunk_entities
     
     def shutdown(self):
         """Cleanup."""

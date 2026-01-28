@@ -17,7 +17,9 @@ class DatabaseManager:
 
     def connect(self):
         """Open database connection."""
-        self.connection = sqlite3.connect(self.db_path)
+        # check_same_thread=False allows sharing connection across threads
+        # This is necessary for async world generation
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row  # Dict-like access
 
     def disconnect(self):

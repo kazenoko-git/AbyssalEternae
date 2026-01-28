@@ -22,17 +22,24 @@ def _grad(hash_val, x, y, z):
     v = y if h < 4 else (z if h == 12 or h == 14 else x)
     return (u if (h & 1) == 0 else -u) + (v if (h & 2) == 0 else -v)
 
+# Cache for permutation table
+_PERM_CACHE = {}
+
+def _get_permutation_table(seed):
+    if seed not in _PERM_CACHE:
+        p = np.arange(256, dtype=int)
+        rng = np.random.RandomState(seed) # Use RandomState for thread safety
+        rng.shuffle(p)
+        _PERM_CACHE[seed] = np.stack([p, p]).flatten()
+    return _PERM_CACHE[seed]
+
 def perlin_noise_2d(x, y, seed=0, octaves=1, persistence=0.5, lacunarity=2.0, scale=1.0) -> float:
     """
     Generates 2D Perlin noise.
-    Based on Ken Perlin's revised noise algorithm.
+    Optimized with cached permutation table.
     """
     
-    # Precompute permutation table (seeded)
-    p = np.arange(256, dtype=int)
-    np.random.seed(seed)
-    np.random.shuffle(p)
-    p = np.stack([p, p]).flatten()
+    p = _get_permutation_table(seed)
 
     total = 0.0
     max_value = 0.0 # Used for normalization
@@ -80,11 +87,7 @@ def ridged_noise_2d(x, y, seed=0, octaves=4, persistence=0.5, lacunarity=2.0, sc
     """
     Generates Ridged Multifractal noise (good for mountains/canyons).
     """
-    # Precompute permutation table (seeded)
-    p = np.arange(256, dtype=int)
-    np.random.seed(seed + 123) # Different seed offset
-    np.random.shuffle(p)
-    p = np.stack([p, p]).flatten()
+    p = _get_permutation_table(seed + 123)
 
     total = 0.0
     max_value = 0.0
