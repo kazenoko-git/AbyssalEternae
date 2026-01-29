@@ -70,3 +70,9 @@ class InputManager:
             
     def get_mouse_delta(self):
         return self._input_state.get('mouse_delta', (0.0, 0.0))
+        
+    def is_key_down(self, key: str) -> bool:
+        """Directly check if a key is pressed."""
+        if self._input_state['watcher']:
+            return self._input_state['watcher'].isButtonDown(key)
+        return False

@@ -4,6 +4,7 @@ from aurora_engine.ecs.system import System
 from aurora_engine.physics.rigidbody import RigidBody
 from aurora_engine.physics.collider import Collider
 from aurora_engine.physics.physics_world import PhysicsWorld
+from panda3d.core import Vec3
 
 class PhysicsSystem(System):
     """
@@ -17,47 +18,30 @@ class PhysicsSystem(System):
         self.registered_entities = set()
 
     def get_required_components(self):
-        return [RigidBody] # Entities must have RigidBody to be simulated dynamically
-        # Static colliders (terrain) might just have Collider, handled separately or via a StaticBody component?
-        # For now, let's assume dynamic bodies need RigidBody.
-        # Static terrain usually needs to be added manually or we need a StaticBody component.
-        # Let's check for Collider too.
+        return [Collider] # Process all entities that have a collider
 
     def update(self, entities, dt):
         # Register new entities
         for entity in entities:
             if entity not in self.registered_entities:
-                # Add to physics world
-                # We need to pass the entity to add_body so it can find components
-                # But add_body takes (entity, body_component)
                 rb = entity.get_component(RigidBody)
-                self.physics_world.add_body(entity, rb)
+                if rb:
+                    # It's a dynamic or kinematic body
+                    self.physics_world.add_body(entity, rb)
+                else:
+                    # It's a static body (has Collider but no RigidBody)
+                    self.physics_world.add_static_body(entity)
+                
                 self.registered_entities.add(entity)
         
-        # Cleanup destroyed entities
-        # This is tricky without an event. 
-        # We can check if registered entities are still in the 'entities' list passed to update.
-        # But 'entities' only contains active ones matching criteria.
-        # If an entity is destroyed, it won't be in 'entities'.
-        
-        # Better approach: PhysicsWorld.step() syncs transforms.
-        # We just need to ensure they are added.
-        # Removal is handled by on_destroy in components (if implemented) or we check here.
-        
-        current_entities = set(entities)
-        to_remove = []
+        # Sync ECS -> Physics (before step) for Dynamic Bodies
         for entity in self.registered_entities:
-            if entity not in current_entities:
-                # Entity lost RigidBody or was destroyed
-                # We can't easily access the RigidBody component if it was removed.
-                # But PhysicsWorld tracks bodies.
-                # Let's rely on explicit removal via on_destroy for now, 
-                # or iterate PhysicsWorld bodies to see if their entity is dead.
-                pass
-                
-        # Static Colliders (Terrain)
-        # If an entity has Collider but NO RigidBody, it's static.
-        # We need a way to add those too.
-        # Let's iterate ALL entities in world? No, too slow.
-        # We need a separate check or component for StaticBody.
+            rb = entity.get_component(RigidBody)
+            if rb and rb._bullet_body and not rb.kinematic and rb.mass > 0:
+                if rb._velocity_dirty:
+                    rb._bullet_body.setLinearVelocity(Vec3(rb.velocity[0], rb.velocity[1], rb.velocity[2]))
+                    rb._velocity_dirty = False
+        
+        # Note: Entity destruction cleanup is handled by on_destroy in components
+        # and the PhysicsWorld's remove_body method.
         pass

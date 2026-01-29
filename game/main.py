@@ -15,8 +15,8 @@ from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.utils.chunk_worker import generate_chunk_meshes
 from game.utils.terrain import get_height_at_world_pos
-from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider
-from aurora_engine.physics.rigidbody import RigidBody
+from aurora_engine.physics.collider import MeshCollider, BoxCollider, CapsuleCollider, Collider
+from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 import numpy as np
 import json
 import os
@@ -66,12 +66,11 @@ class Rifted(Application):
         player_transform.set_world_position(np.array([0, 0, 10.0], dtype=np.float32))
 
         # Add player visual (Capsule)
-        # Height 2.0 for a proper capsule shape
         player_mesh = create_capsule_mesh(radius=0.5, height=2.0)
         self.player.add_component(MeshRenderer(mesh=player_mesh, color=(0.2, 0.4, 0.8, 1.0)))
         
         # Add player physics
-        self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))
+        self.player.add_component(Collider(CapsuleCollider(radius=0.5, height=2.0)))
         rb = self.player.add_component(RigidBody())
         rb.mass = 80.0 # Standard human mass
         rb.use_gravity = True
@@ -303,9 +302,9 @@ class Rifted(Application):
             ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
             if fade_in: ground.add_component(FadeInEffect(duration=1.5))
             
-            if 'heightmap_data' in region_data:
-                heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
-                ground.add_component(Collider(HeightfieldCollider(heightmap)))
+            # Add StaticBody and MeshCollider for terrain
+            ground.add_component(StaticBody())
+            ground.add_component(Collider(MeshCollider(meshes['terrain'], convex=False)))
             
             chunk_entities.append(ground)
             

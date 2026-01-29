@@ -61,29 +61,18 @@ class ActionMap:
             
         from panda3d.core import KeyboardButton, MouseButton
         
-        btn = None
         if device == InputDevice.KEYBOARD:
-            # Panda3D KeyboardButton
-            try:
-                if len(key) == 1:
-                    btn = KeyboardButton.ascii_key(key)
-                else:
-                    # Handle special keys like "space", "shift", etc.
-                    attr = getattr(KeyboardButton, key, None)
-                    if callable(attr):
-                        btn = attr() # Call the method to get the handle
-                    else:
-                        btn = attr
-            except AttributeError:
-                pass
+            # Panda3D's MouseWatcher can take the key name directly as a string.
+            # This is the most reliable method.
+            return watcher.isButtonDown(key)
 
         elif device == InputDevice.MOUSE:
+            btn = None
             if key == "mouse1": btn = MouseButton.one()
             elif key == "mouse2": btn = MouseButton.two()
             elif key == "mouse3": btn = MouseButton.three()
             
-        if btn:
-            return watcher.isButtonDown(btn)
+            if btn:
+                return watcher.isButtonDown(btn)
             
-        # Fallback: check if key string works directly (Panda3D supports string lookup for some)
-        return watcher.isButtonDown(key)
+        return False

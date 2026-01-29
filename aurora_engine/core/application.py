@@ -95,6 +95,9 @@ class Application(ABC):
             self.physics.initialize()
             self.ui.initialize()
             
+            # Initialize Input with Backend
+            self.input.initialize(self.renderer.backend)
+            
             # Register Physics System
             self.world.add_system(PhysicsSystem(self.physics))
             

@@ -18,83 +18,54 @@ class PlayerSystem(System):
     def __init__(self, input_manager: InputManager):
         super().__init__()
         self.input_manager = input_manager
-        self._setup_input()
-
-    def _setup_input(self):
-        """Setup input context for player."""
-        self.context = self.input_manager.create_context("Player")
-        
-        # Move
-        self.context.action_map.create_action("MoveForward").add_binding(InputDevice.KEYBOARD, "w")
-        self.context.action_map.create_action("MoveBackward").add_binding(InputDevice.KEYBOARD, "s")
-        self.context.action_map.create_action("MoveLeft").add_binding(InputDevice.KEYBOARD, "a")
-        self.context.action_map.create_action("MoveRight").add_binding(InputDevice.KEYBOARD, "d")
-        self.context.action_map.create_action("Jump").add_binding(InputDevice.KEYBOARD, "space")
-        
-        self.input_manager.set_active_context(self.context)
 
     def get_required_components(self):
-        return [Transform, PlayerController] # RigidBody is optional but recommended
+        return [Transform, PlayerController, RigidBody]
 
     def update(self, entities, dt):
         """Update player movement."""
         
-        input_state = self.input_manager._input_state 
-        
         move_input = np.zeros(3, dtype=np.float32)
         
-        if self.context.action_map.is_action_active("MoveForward", input_state):
+        if self.input_manager.is_key_down("w"):
             move_input[1] += 1.0
-        if self.context.action_map.is_action_active("MoveBackward", input_state):
+        if self.input_manager.is_key_down("s"):
             move_input[1] -= 1.0
-        if self.context.action_map.is_action_active("MoveLeft", input_state):
+        if self.input_manager.is_key_down("a"):
             move_input[0] -= 1.0
-        if self.context.action_map.is_action_active("MoveRight", input_state):
+        if self.input_manager.is_key_down("d"):
             move_input[0] += 1.0
             
         if np.linalg.norm(move_input) > 0:
             move_input = move_input / np.linalg.norm(move_input)
 
-        jump = self.context.action_map.is_action_active("Jump", input_state)
+        jump = self.input_manager.is_key_down("space")
 
         for entity in entities:
             transform = entity.get_component(Transform)
             controller = entity.get_component(PlayerController)
             rigidbody = entity.get_component(RigidBody)
 
-            # Calculate movement direction relative to camera (if available)
-            # For now, assume camera follows player rotation or world space
-            # Let's use world space for simplicity, or transform.forward if we rotate player
+            # Get current velocity
+            current_vel = rigidbody.velocity
             
-            # If we have a rigidbody, use physics
-            if rigidbody:
-                # Get current velocity
-                current_vel = rigidbody.velocity
-                
-                # Apply movement force/velocity
-                # We want instant response, so setting velocity is often better for characters than force
-                target_vel_x = move_input[0] * controller.move_speed
-                target_vel_y = move_input[1] * controller.move_speed
-                
-                # Preserve Z velocity (gravity)
-                new_vel = np.array([target_vel_x, target_vel_y, current_vel[2]], dtype=np.float32)
-                
-                # Jump
-                if jump and abs(current_vel[2]) < 0.1: # Simple ground check
-                     new_vel[2] = controller.jump_force
-                     
-                rigidbody.set_velocity(new_vel)
-                
-                # Rotate player to face movement direction
-                if np.linalg.norm(move_input) > 0.1:
-                    # Calculate yaw
-                    angle = np.arctan2(move_input[0], move_input[1])
-                    # Create quaternion (Z-up rotation)
-                    # ... (Math util needed here, or just set rotation)
-                    pass
-
-            else:
-                # Fallback to direct transform modification (no gravity)
-                velocity = move_input * controller.move_speed
-                new_pos = transform.get_world_position() + velocity * dt
-                transform.set_world_position(new_pos)
+            # Apply movement force/velocity
+            target_vel_x = move_input[0] * controller.move_speed
+            target_vel_y = move_input[1] * controller.move_speed
+            
+            # Preserve Z velocity (gravity)
+            new_vel = np.array([target_vel_x, target_vel_y, current_vel[2]], dtype=np.float32)
+            
+            # Jump
+            if jump and abs(current_vel[2]) < 0.1: # Simple ground check
+                 new_vel[2] = controller.jump_force
+                 
+            rigidbody.set_velocity(new_vel)
+            
+            # Rotate player to face movement direction
+            if np.linalg.norm(move_input) > 0.1:
+                # Calculate yaw
+                angle = np.arctan2(move_input[0], move_input[1])
+                # Create quaternion (Z-up rotation)
+                # ... (Math util needed here, or just set rotation)
+                pass

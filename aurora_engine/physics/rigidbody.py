@@ -25,6 +25,7 @@ class RigidBody(Component):
 
         # Physics backend handle (Panda3D BulletRigidBodyNode)
         self._bullet_body = None
+        self._velocity_dirty = False
 
     def add_force(self, force: np.ndarray):
         """Apply force to center of mass."""
@@ -47,10 +48,7 @@ class RigidBody(Component):
     def set_velocity(self, velocity: np.ndarray):
         """Set linear velocity."""
         self.velocity = velocity.copy()
-        if self._bullet_body:
-            from panda3d.core import Vec3
-            v = Vec3(velocity[0], velocity[1], velocity[2])
-            self._bullet_body.setLinearVelocity(v)
+        self._velocity_dirty = True
             
     def set_angular_velocity(self, velocity: np.ndarray):
         """Set angular velocity."""
@@ -59,3 +57,9 @@ class RigidBody(Component):
             from panda3d.core import Vec3
             v = Vec3(velocity[0], velocity[1], velocity[2])
             self._bullet_body.setAngularVelocity(v)
+
+class StaticBody(Component):
+    """
+    Marker component for static colliders in the world.
+    """
+    pass
