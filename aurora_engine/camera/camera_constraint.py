@@ -3,7 +3,10 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from aurora_engine.camera.camera import Camera
+from aurora_engine.scene.transform import Transform
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class CameraConstraint(ABC):
     """

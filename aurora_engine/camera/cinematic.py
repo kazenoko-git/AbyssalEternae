@@ -3,7 +3,9 @@
 from typing import List
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class CameraKeyframe:
     """A single keyframe in a camera animation."""
@@ -28,6 +30,7 @@ class CinematicController(CameraController):
         self.playback_time = 0.0
         self.playing = False
         self.loop = False
+        # logger.debug("CinematicController initialized")
 
     def add_keyframe(self, keyframe: CameraKeyframe):
         """Add a keyframe to the animation."""
@@ -39,10 +42,12 @@ class CinematicController(CameraController):
         """Start playback."""
         self.playing = True
         self.playback_time = 0.0
+        logger.info("Started cinematic playback")
 
     def stop(self):
         """Stop playback."""
         self.playing = False
+        logger.info("Stopped cinematic playback")
 
     def update(self, dt: float):
         """Update camera from keyframes."""

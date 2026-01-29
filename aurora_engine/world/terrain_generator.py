@@ -4,7 +4,9 @@ import numpy as np
 from aurora_engine.rendering.mesh import Mesh
 from typing import Tuple, Dict
 import json
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 # --- Noise Functions ---
 def _fade(t):
@@ -158,47 +160,50 @@ def get_height_at_world_pos(world_x: float, world_y: float, region_data: Dict, c
     Retrieves the height at a specific world position within a region.
     Assumes region_data contains 'heightmap_data' (serialized numpy array).
     """
-    
-    # Deserialize heightmap
-    heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
-    rows, cols = heightmap.shape
-    
-    # Get region's world origin
-    # Assuming 'size' is chunk_size, which we know is 100.0 from WorldGenerator
-    # We should probably pass this or store it in region_data.
-    # For now, hardcode 100.0 as per WorldGenerator logic
-    region_size = 100.0
-    
-    region_x_origin = region_data['coordinates_x'] * region_size
-    region_y_origin = region_data['coordinates_y'] * region_size
-    
-    # Convert world pos to local pos within heightmap grid
-    local_x = (world_x - region_x_origin) / cell_size
-    local_y = (world_y - region_y_origin) / cell_size
-    
-    # Clamp to grid boundaries
-    local_x = np.clip(local_x, 0, cols - 1)
-    local_y = np.clip(local_y, 0, rows - 1)
-    
-    # Bilinear interpolation for smoother height
-    x0, y0 = int(np.floor(local_x)), int(np.floor(local_y))
-    x1, y1 = int(np.ceil(local_x)), int(np.ceil(local_y))
-    
-    # Ensure indices are within bounds
-    x0 = np.clip(x0, 0, cols - 1)
-    y0 = np.clip(y0, 0, rows - 1)
-    x1 = np.clip(x1, 0, cols - 1)
-    y1 = np.clip(y1, 0, cols - 1)
+    try:
+        # Deserialize heightmap
+        heightmap = np.array(json.loads(region_data['heightmap_data']), dtype=np.float32)
+        rows, cols = heightmap.shape
 
-    h00 = heightmap[y0, x0]
-    h01 = heightmap[y0, x1]
-    h10 = heightmap[y1, x0]
-    h11 = heightmap[y1, x1]
-    
-    tx = local_x - x0
-    ty = local_y - y0
-    
-    h_top = _lerp(tx, h00, h01)
-    h_bottom = _lerp(tx, h10, h11)
-    
-    return _lerp(ty, h_top, h_bottom)
+        # Get region's world origin
+        # Assuming 'size' is chunk_size, which we know is 100.0 from WorldGenerator
+        # We should probably pass this or store it in region_data.
+        # For now, hardcode 100.0 as per WorldGenerator logic
+        region_size = 100.0
+
+        region_x_origin = region_data['coordinates_x'] * region_size
+        region_y_origin = region_data['coordinates_y'] * region_size
+
+        # Convert world pos to local pos within heightmap grid
+        local_x = (world_x - region_x_origin) / cell_size
+        local_y = (world_y - region_y_origin) / cell_size
+
+        # Clamp to grid boundaries
+        local_x = np.clip(local_x, 0, cols - 1)
+        local_y = np.clip(local_y, 0, rows - 1)
+
+        # Bilinear interpolation for smoother height
+        x0, y0 = int(np.floor(local_x)), int(np.floor(local_y))
+        x1, y1 = int(np.ceil(local_x)), int(np.ceil(local_y))
+
+        # Ensure indices are within bounds
+        x0 = np.clip(x0, 0, cols - 1)
+        y0 = np.clip(y0, 0, rows - 1)
+        x1 = np.clip(x1, 0, cols - 1)
+        y1 = np.clip(y1, 0, cols - 1)
+
+        h00 = heightmap[y0, x0]
+        h01 = heightmap[y0, x1]
+        h10 = heightmap[y1, x0]
+        h11 = heightmap[y1, x1]
+
+        tx = local_x - x0
+        ty = local_y - y0
+
+        h_top = _lerp(tx, h00, h01)
+        h_bottom = _lerp(tx, h10, h11)
+
+        return _lerp(ty, h_top, h_bottom)
+    except Exception as e:
+        logger.error(f"Error getting height at world pos ({world_x}, {world_y}): {e}")
+        return 0.0

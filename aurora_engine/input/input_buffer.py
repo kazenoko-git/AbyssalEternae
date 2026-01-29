@@ -3,7 +3,9 @@
 from collections import deque
 from typing import Deque, Tuple
 import time
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class InputEvent:
     """Represents a single input event."""
@@ -28,6 +30,7 @@ class InputBuffer:
         """Add an input event to the buffer."""
         event = InputEvent(action, pressed, time.perf_counter())
         self.events.append(event)
+        # logger.debug(f"Buffered input event: {action} {'pressed' if pressed else 'released'}")
 
     def update(self):
         """Remove old events from buffer."""

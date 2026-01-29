@@ -3,7 +3,9 @@
 from typing import Optional
 from aurora_engine.camera.camera import Camera
 import numpy as np
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class CameraBlender:
     """
@@ -28,6 +30,7 @@ class CameraBlender:
         self.blend_duration = duration
         self.blend_timer = 0.0
         self.blending = True
+        logger.info(f"Started camera blend (duration={duration}s)")
 
     def update(self, dt: float, output_camera: Camera):
         """Update blend and write to output camera."""
@@ -54,6 +57,7 @@ class CameraBlender:
         if t >= 1.0:
             self.current_camera = self.target_camera
             self.blending = False
+            logger.info("Camera blend finished")
 
     def _copy_camera(self, source: Camera, dest: Camera):
         """Copy camera state."""

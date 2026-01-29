@@ -5,7 +5,9 @@ from aurora_engine.camera.camera_controller import CameraController
 from aurora_engine.scene.transform import Transform
 from aurora_engine.utils.math import matrix_to_quaternion
 from aurora_engine.input.input_manager import InputManager
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class ThirdPersonController(CameraController):
     """
@@ -39,6 +41,8 @@ class ThirdPersonController(CameraController):
 
         # Current state
         self._current_position = self.camera.transform.local_position.copy()
+        
+        # logger.debug("ThirdPersonController initialized")
 
     def update(self, dt: float):
         """Update camera to follow target smoothly."""

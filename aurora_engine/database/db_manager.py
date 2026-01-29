@@ -3,6 +3,7 @@
 import mysql.connector
 from typing import Optional, List, Dict, Any
 import threading
+from aurora_engine.core.logging import get_logger
 
 
 class DatabaseManager:
@@ -15,6 +16,8 @@ class DatabaseManager:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.local = threading.local() # Thread-local storage
+        self.logger = get_logger()
+        self.logger.info("DatabaseManager initialized")
 
     def _get_connection(self):
         """Get or create a connection for the current thread."""
@@ -29,8 +32,9 @@ class DatabaseManager:
             }
             try:
                 self.local.connection = mysql.connector.connect(**dbconfig)
+                self.logger.info(f"Connected to MySQL database: {dbconfig['database']}")
             except mysql.connector.Error as err:
-                print(f"Error connecting to MySQL: {err}")
+                self.logger.critical(f"Error connecting to MySQL: {err}")
                 raise
         return self.local.connection
 
@@ -43,6 +47,7 @@ class DatabaseManager:
         if hasattr(self.local, 'connection') and self.local.connection:
             self.local.connection.close()
             self.local.connection = None
+            self.logger.info("Disconnected from MySQL")
 
     def execute(self, query: str, params: tuple = ()) -> Any:
         """Execute a query."""
@@ -52,9 +57,9 @@ class DatabaseManager:
             cursor.execute(query, params)
             return cursor
         except mysql.connector.Error as err:
-            print(f"Query failed: {err}")
-            print(f"Query: {query}")
-            print(f"Params: {params}")
+            self.logger.error(f"Query failed: {err}")
+            self.logger.debug(f"Query: {query}")
+            self.logger.debug(f"Params: {params}")
             raise
 
     def fetch_one(self, query: str, params: tuple = ()) -> Optional[Dict]:

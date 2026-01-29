@@ -4,7 +4,9 @@ from typing import List, Dict, Optional
 import numpy as np
 from aurora_engine.ui.widget import Widget
 from aurora_engine.ui.theme import UITheme
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class UIManager:
     """
@@ -31,12 +33,13 @@ class UIManager:
             'menu': [],
             'overlay': [],
         }
+        # logger.debug("UIManager initialized")
 
     def initialize(self):
         """Initialize UI system."""
         # from aurora_engine.ui.theme import GenshinTheme
         # self.theme = GenshinTheme()
-        pass
+        logger.info("UI system initialized")
 
     def add_widget(self, widget: Widget, layer: str = 'hud'):
         """Add a widget to the UI."""
@@ -48,6 +51,7 @@ class UIManager:
         # Apply theme
         if self.theme:
             self.theme.apply_to_widget(widget)
+        # logger.debug(f"Added widget '{widget.name}' to layer '{layer}'")
 
     def remove_widget(self, widget: Widget):
         """Remove a widget from the UI."""

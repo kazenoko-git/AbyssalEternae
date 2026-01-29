@@ -11,7 +11,9 @@ from game.ai.ai_generator import AIContentGenerator
 from game.utils.terrain import generate_composite_height, get_height_at_world_pos
 from game.systems.world_gen.biome_generator import BiomeGenerator
 from game.systems.world_gen.civilization_generator import CivilizationGenerator
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class WorldGenerator:
     """
@@ -26,6 +28,7 @@ class WorldGenerator:
         self.region_size = 100.0 # World units per region
         self.terrain_resolution = 20 # Higher resolution for better mountains
         self.executor = ThreadPoolExecutor(max_workers=2) # Background generation
+        self.logger = get_logger()
         
         # In-memory cache for generated regions to reduce DB hits
         self.known_regions: Dict[str, Dict] = {}
@@ -33,6 +36,7 @@ class WorldGenerator:
         # Generators
         self.biome_gen = None
         self.civ_gen = None
+        # logger.debug("WorldGenerator initialized")
 
     def get_or_create_dimension(self, dimension_id: str, seed: int) -> Dict:
         """Retrieve a dimension or generate it if it doesn't exist."""
@@ -44,7 +48,7 @@ class WorldGenerator:
             return dict(dim)
 
         # Generate New Dimension
-        print(f"Generating new dimension: {dimension_id} (Seed: {seed})")
+        self.logger.info(f"Generating new dimension: {dimension_id} (Seed: {seed})")
         
         # 1. Deterministic Randomness
         rng = random.Random(seed)
@@ -62,11 +66,14 @@ class WorldGenerator:
         visuals = {"fog_color": [rng.random(), rng.random(), rng.random()], "skybox": "nebula"}
         
         # 3. Save to DB
-        self.db.execute("""
-            INSERT INTO dimensions (dimension_id, name, seed, physics_rules_json, visual_style_json, generated_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (dimension_id, name, seed, json.dumps(physics), json.dumps(visuals), int(time.time())))
-        self.db.commit()
+        try:
+            self.db.execute("""
+                INSERT INTO dimensions (dimension_id, name, seed, physics_rules_json, visual_style_json, generated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (dimension_id, name, seed, json.dumps(physics), json.dumps(visuals), int(time.time())))
+            self.db.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to save dimension {dimension_id}: {e}")
         
         self._init_generators(seed)
         return self.db.fetch_one("SELECT * FROM dimensions WHERE dimension_id = %s", (dimension_id,))
@@ -109,7 +116,7 @@ class WorldGenerator:
         biome_data = self.biome_gen.get_biome_data(center_x, center_y)
         biome = biome_data['biome']
         
-        # print(f"Generating Region {region_id}: {biome}") 
+        # self.logger.debug(f"Generating Region {region_id}: {biome}")
         
         # --- Terrain Heightmap Generation ---
         heightmap_data = self._generate_heightmap(dim_seed, x, y)
@@ -179,11 +186,14 @@ class WorldGenerator:
                     entities.append(prop)
             
         # Save Region
-        self.db.execute("""
-            INSERT INTO regions (region_id, dimension_id, coordinates_x, coordinates_y, biome_type, entities_json, is_generated, heightmap_data)
-            VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
-        """, (region_id, dimension_id, x, y, biome, json.dumps(entities), json.dumps(heightmap_data.tolist())))
-        self.db.commit()
+        try:
+            self.db.execute("""
+                INSERT INTO regions (region_id, dimension_id, coordinates_x, coordinates_y, biome_type, entities_json, is_generated, heightmap_data)
+                VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
+            """, (region_id, dimension_id, x, y, biome, json.dumps(entities), json.dumps(heightmap_data.tolist())))
+            self.db.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to save region {region_id}: {e}")
         
         # Fetch and Cache
         new_region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))

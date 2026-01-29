@@ -5,6 +5,9 @@ from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 from aurora_engine.physics.collider import Collider
 from aurora_engine.physics.physics_world import PhysicsWorld
 from panda3d.core import Vec3
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class PhysicsSystem(System):
     """
@@ -16,6 +19,7 @@ class PhysicsSystem(System):
         super().__init__()
         self.physics_world = physics_world
         self.registered_entities = set()
+        # logger.debug("PhysicsSystem initialized")
 
     def get_required_components(self):
         return [Collider]
@@ -29,6 +33,7 @@ class PhysicsSystem(System):
                 if rb:
                     self.physics_world.add_body(entity, rb)
                     self.registered_entities.add(entity)
+                    # logger.debug(f"Registered dynamic body for Entity {entity.id}")
                     continue
                 
                 # Check for StaticBody (Static)
@@ -36,7 +41,8 @@ class PhysicsSystem(System):
                 if sb:
                     self.physics_world.add_static_body(entity)
                     self.registered_entities.add(entity)
-        
+                    # logger.debug(f"Registered static body for Entity {entity.id}")
+
         # Sync ECS -> Physics (before step) for Dynamic Bodies
         for entity in self.registered_entities:
             rb = entity.get_component(RigidBody)

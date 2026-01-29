@@ -1,8 +1,10 @@
 # aurora_engine/ui/animator.py
 
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional, List
 import math
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class UIAnimation:
     """
@@ -85,6 +87,7 @@ class UIAnimator:
         self.animations = [a for a in self.animations if not (a.target == target and a.property_name == property_name)]
         
         self.animations.append(anim)
+        # logger.debug(f"Started animation on {property_name}")
 
     def update(self, dt: float):
         """Update all active animations."""

@@ -3,6 +3,7 @@
 from typing import List, Dict, Optional
 from aurora_engine.input.input_context import InputContext
 from aurora_engine.input.action_map import InputDevice
+from aurora_engine.core.logging import get_logger
 
 
 class InputManager:
@@ -15,6 +16,7 @@ class InputManager:
         self.contexts: List[InputContext] = []
         self.active_context: Optional[InputContext] = None
         self.backend = None # Reference to PandaBackend
+        self.logger = get_logger()
 
         # Raw input state (polled each frame)
         self._input_state = {
@@ -24,20 +26,26 @@ class InputManager:
             'mouse_delta': (0.0, 0.0),
             'watcher': None
         }
+        self.logger.info("InputManager initialized")
 
     def initialize(self, backend):
         """Initialize with backend reference."""
         self.backend = backend
+        self.logger.info("InputManager initialized with backend")
 
     def create_context(self, name: str) -> InputContext:
         """Create a new input context."""
         context = InputContext(name)
         self.contexts.append(context)
+        self.logger.info(f"Created input context: {name}")
         return context
 
     def set_active_context(self, context: InputContext):
         """Switch to a different input context."""
+        if self.active_context and self.active_context.name == context.name:
+            return
         self.active_context = context
+        self.logger.info(f"Set active input context: {context.name}")
 
     def poll(self):
         """Poll hardware for input state."""

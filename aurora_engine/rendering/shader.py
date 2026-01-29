@@ -2,7 +2,9 @@
 
 from typing import Dict, Any
 from panda3d.core import Shader as PandaShader
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Shader:
     """
@@ -20,6 +22,7 @@ class Shader:
 
         # Backend handle (Panda3D shader object)
         self._backend_shader = None
+        # logger.debug(f"Shader '{name}' created")
 
     def compile(self):
         """Compile shader from source files."""
@@ -29,8 +32,9 @@ class Shader:
                 vertex=self.vertex_path,
                 fragment=self.fragment_path
             )
+            logger.info(f"Compiled shader '{self.name}'")
         except Exception as e:
-            print(f"Failed to compile shader {self.name}: {e}")
+            logger.error(f"Failed to compile shader {self.name}: {e}")
 
     def set_uniform(self, name: str, value: Any):
         """Set shader uniform value."""

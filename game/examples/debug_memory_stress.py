@@ -10,26 +10,16 @@ from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.ai.ai_generator import AIContentGenerator
 from game.systems.world_generator import WorldGenerator
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 def get_memory_usage():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024 / 1024  # MB
 
 def run_stress_test():
-    print("Starting Memory Stress Test...")
-    
-    # Setup DB
-    db_path = 'stress_test.db'
-    if os.path.exists(db_path):
-        os.remove(db_path)
-        
-    db_manager = DatabaseManager({'database': db_path}) # SQLite fallback if dict passed without host
-    # Actually DatabaseManager expects dict for MySQL or path string for SQLite in my previous implementations?
-    # Let's check DatabaseManager implementation.
-    # It expects a dict. If 'host' is present it tries MySQL.
-    # Wait, I changed DatabaseManager to ONLY support MySQL in the last major refactor.
-    # But for a stress test, maybe we want to test the logic, not the DB connection overhead?
-    # If I use the MySQL config, it will work.
+    logger.info("Starting Memory Stress Test...")
     
     db_config = {
         'host': 'localhost',
@@ -43,7 +33,7 @@ def run_stress_test():
         db_manager = DatabaseManager(db_config)
         db_manager.connect()
     except Exception as e:
-        print(f"Failed to connect to MySQL: {e}")
+        logger.error(f"Failed to connect to MySQL: {e}")
         return
 
     # Reset DB
@@ -57,7 +47,7 @@ def run_stress_test():
     world_gen.get_or_create_dimension(dim_id, 123)
     
     start_mem = get_memory_usage()
-    print(f"Initial Memory: {start_mem:.2f} MB")
+    logger.info(f"Initial Memory: {start_mem:.2f} MB")
     
     chunks_generated = 0
     
@@ -83,7 +73,7 @@ def run_stress_test():
             current_mem = get_memory_usage()
             diff = current_mem - start_mem
             
-            print(f"Chunks: {chunks_generated} | Mem: {current_mem:.2f} MB (+{diff:.2f} MB)")
+            logger.info(f"Chunks: {chunks_generated} | Mem: {current_mem:.2f} MB (+{diff:.2f} MB)")
             
             # Optional: Sleep to not kill CPU
             # time.sleep(0.1)
@@ -92,10 +82,10 @@ def run_stress_test():
                 break
                 
     except KeyboardInterrupt:
-        print("Test stopped.")
+        logger.info("Test stopped.")
     finally:
         db_manager.disconnect()
-        print("Test finished.")
+        logger.info("Test finished.")
 
 if __name__ == "__main__":
     run_stress_test()

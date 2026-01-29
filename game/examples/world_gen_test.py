@@ -18,6 +18,7 @@ from aurora_engine.physics.collider import Collider
 from game.utils.chunk_worker import generate_chunk_meshes
 from game.components.fade_in import FadeInEffect
 from game.systems.fade_in_system import FadeInSystem
+from aurora_engine.core.logging import get_logger
 import numpy as np
 import json
 import os
@@ -26,6 +27,7 @@ import random
 from typing import Dict, Tuple, Set, List
 from concurrent.futures import ThreadPoolExecutor, Future
 
+logger = get_logger()
 
 class WorldGenTest(Application):
     """
@@ -34,6 +36,7 @@ class WorldGenTest(Application):
 
     def initialize_game(self):
         """Test initialization."""
+        logger.info("Initializing WorldGenTest")
         # Initialize Database (MySQL)
         db_config = self.config.get('database', {})
         if not db_config:
@@ -144,7 +147,7 @@ class WorldGenTest(Application):
                         completed.append(coords)
 
                 except Exception as e:
-                    print(f"Generation failed for chunk {coords}: {e}")
+                    logger.error(f"Generation failed for chunk {coords}: {e}")
                     # Reset state to allow retry
                     if coords in self.chunk_states:
                         del self.chunk_states[coords]
@@ -210,10 +213,10 @@ class WorldGenTest(Application):
     def _load_world_meta(self):
         seed = random.randrange(1,9999999)
         dim = self.world_generator.get_or_create_dimension("dim_test", seed)
-        print(f"Dimension: {dim['name']} (Seed: {seed})")
+        logger.info(f"Dimension: {dim['name']} (Seed: {seed})")
 
     def _load_initial_world(self):
-        print("Loading initial world...")
+        logger.info("Loading initial world...")
         regions = self.world_generator.load_chunks_around_player("dim_test", 0, 0, radius=self.load_radius)
         for region in regions:
             meshes = generate_chunk_meshes(region)

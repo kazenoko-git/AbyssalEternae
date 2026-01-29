@@ -1,7 +1,9 @@
 # game_project/components/npc.py
 
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class NPCController(Component):
     """
@@ -16,3 +18,4 @@ class NPCController(Component):
         self.dialogue_state = "idle"
         self.current_target = None
         self.patrol_points = []
+        # logger.debug(f"NPCController created for {npc_name} ({npc_id})")

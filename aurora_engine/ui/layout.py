@@ -4,7 +4,9 @@ from enum import Enum
 from typing import List, Tuple
 import numpy as np
 from aurora_engine.ui.widget import Widget
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class LayoutType(Enum):
     VERTICAL = 0

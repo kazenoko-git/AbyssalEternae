@@ -3,7 +3,9 @@
 from typing import List, Dict
 from aurora_engine.database.db_manager import DatabaseManager
 import time
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class NPCMemorySystem:
     """
@@ -16,11 +18,15 @@ class NPCMemorySystem:
 
     def add_memory(self, npc_id: str, event_type: str, description: str, emotional_impact: float = 0.0):
         """Store a new memory for an NPC."""
-        self.db.execute("""
-            INSERT INTO npc_memory (npc_id, event_type, description, emotional_impact, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        """, (npc_id, event_type, description, emotional_impact, int(time.time())))
-        self.db.commit()
+        try:
+            self.db.execute("""
+                INSERT INTO npc_memory (npc_id, event_type, description, emotional_impact, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            """, (npc_id, event_type, description, emotional_impact, int(time.time())))
+            self.db.commit()
+            # logger.debug(f"Added memory for NPC {npc_id}: {event_type}")
+        except Exception as e:
+            logger.error(f"Failed to add memory for NPC {npc_id}: {e}")
 
     def get_recent_memories(self, npc_id: str, limit: int = 10) -> List[Dict]:
         """Retrieve recent memories for an NPC."""

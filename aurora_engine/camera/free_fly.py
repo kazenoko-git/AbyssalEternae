@@ -3,7 +3,9 @@
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
 from aurora_engine.utils.math import quaternion_from_euler
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class FreeFlyController(CameraController):
     """
@@ -26,6 +28,8 @@ class FreeFlyController(CameraController):
 
         # Velocity (for smoothing)
         self.velocity = np.zeros(3, dtype=np.float32)
+
+        # logger.debug("FreeFlyController initialized")
 
     def move(self, direction: np.ndarray, sprint: bool = False):
         """Move camera in local direction."""

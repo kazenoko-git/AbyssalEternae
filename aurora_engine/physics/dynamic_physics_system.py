@@ -4,6 +4,9 @@ from aurora_engine.ecs.system import System
 from aurora_engine.physics.rigidbody import RigidBody
 from aurora_engine.physics.physics_world import PhysicsWorld
 from panda3d.core import Vec3
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class DynamicPhysicsSystem(System):
     """
@@ -16,6 +19,7 @@ class DynamicPhysicsSystem(System):
         super().__init__()
         self.physics_world = physics_world
         self.registered_entities = set()
+        # logger.debug("DynamicPhysicsSystem initialized")
 
     def get_required_components(self):
         return [RigidBody]
@@ -27,6 +31,7 @@ class DynamicPhysicsSystem(System):
                 rb = entity.get_component(RigidBody)
                 self.physics_world.add_body(entity, rb)
                 self.registered_entities.add(entity)
+                # logger.debug(f"Registered dynamic body for Entity {entity.id}")
 
         # 2. Sync ECS -> Physics (before step)
         for entity in self.registered_entities:
@@ -45,7 +50,7 @@ class DynamicPhysicsSystem(System):
                 # Apply velocity if it was set by a controller
                 if rb._velocity_dirty:
                     # DEBUG: Print velocity being set
-                    # print(f"Setting velocity for {entity.id}: {rb.velocity}")
+                    # logger.debug(f"Setting velocity for {entity.id}: {rb.velocity}")
 
                     rb._bullet_body.setActive(True) # Wake up body
                     rb._bullet_body.setLinearVelocity(Vec3(rb.velocity[0], rb.velocity[1], rb.velocity[2]))

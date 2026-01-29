@@ -17,6 +17,8 @@ from game.utils.chunk_worker import generate_chunk_meshes
 from game.utils.terrain import get_height_at_world_pos
 from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider
 from aurora_engine.physics.rigidbody import RigidBody, StaticBody
+from aurora_engine.core.logging import get_logger
+
 import numpy as np
 import json
 import os
@@ -25,6 +27,7 @@ import random
 from typing import Dict, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 
+logger = get_logger()
 
 class Rifted(Application):
     """
@@ -33,6 +36,7 @@ class Rifted(Application):
 
     def initialize_game(self):
         """Game-specific initialization."""
+        logger.info("Initializing Rifted Game...")
         # Initialize Database (MySQL)
         db_config = self.config.get('database', {})
         if not db_config:
@@ -115,6 +119,9 @@ class Rifted(Application):
         self.load_radius = 4 
         self.unload_radius = 6
         self.last_chunk_check = 0.0
+        
+        # Store current dimension ID
+        self.current_dimension_id = None
 
         # Load Game World
         self._load_game_world()
@@ -170,7 +177,7 @@ class Rifted(Application):
                     mesh_future = self.mesh_executor.submit(generate_chunk_meshes, region_data)
                     self.pending_meshes[coords] = mesh_future
                 except Exception as e:
-                    print(f"Chunk data generation failed for {coords}: {e}")
+                    logger.error(f"Chunk data generation failed for {coords}: {e}")
                 completed_data.append(coords)
                 
         for coords in completed_data:
@@ -182,10 +189,10 @@ class Rifted(Application):
             if future.done():
                 try:
                     meshes = future.result()
-                    region_data = self.world_generator.generate_region("dim_main", coords[0], coords[1])
+                    region_data = self.world_generator.generate_region(self.current_dimension_id, coords[0], coords[1])
                     self._instantiate_chunk(region_data, meshes, fade_in=True)
                 except Exception as e:
-                    print(f"Chunk mesh generation failed for {coords}: {e}")
+                    logger.error(f"Chunk mesh generation failed for {coords}: {e}")
                 completed_meshes.append(coords)
                 
         for coords in completed_meshes:
@@ -232,7 +239,7 @@ class Rifted(Application):
 
     def _request_chunk_load(self, coords: Tuple[int, int]):
         """Start async generation."""
-        future = self.world_generator.generate_region_async("dim_main", coords[0], coords[1])
+        future = self.world_generator.generate_region_async(self.current_dimension_id, coords[0], coords[1])
         self.pending_data[coords] = future
 
     def _unload_chunk(self, coords: Tuple[int, int]):
@@ -246,13 +253,15 @@ class Rifted(Application):
     def _load_game_world(self):
         """Load the main game world."""
         # Use a random seed for the main world
-        seed = int(time.time())
-        dim = self.world_generator.get_or_create_dimension("dim_main", seed)
-        print(f"Entered Dimension: {dim['name']} (Seed: {seed})")
+        seed = random.randint(0, 2**32 - 1)
+        # Use a unique dimension ID each time to force new generation
+        self.current_dimension_id = f"dim_main_{seed}"
+        dim = self.world_generator.get_or_create_dimension(self.current_dimension_id, seed)
+        logger.info(f"Entered Dimension: {dim['name']} (Seed: {seed})")
         
         # Initial Load (Synchronous)
-        print("Loading initial area...")
-        regions = self.world_generator.load_chunks_around_player("dim_main", 0, 0, radius=self.load_radius)
+        logger.info("Loading initial area...")
+        regions = self.world_generator.load_chunks_around_player(self.current_dimension_id, 0, 0, radius=self.load_radius)
         
         for region in regions:
             meshes = generate_chunk_meshes(region)

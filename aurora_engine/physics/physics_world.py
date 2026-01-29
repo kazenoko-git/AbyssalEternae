@@ -6,7 +6,9 @@ from aurora_engine.ecs.entity import Entity
 from aurora_engine.physics.rigidbody import RigidBody
 from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider, HeightfieldCollider, MeshCollider, CapsuleCollider
 from aurora_engine.scene.transform import Transform
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class PhysicsWorld:
     """
@@ -27,6 +29,8 @@ class PhysicsWorld:
 
         # Panda3D Bullet physics integration
         self._bullet_world = None
+        
+        # logger.debug(f"PhysicsWorld initialized with gravity={self.gravity}")
 
     def initialize(self):
         """Initialize physics backend."""
@@ -35,6 +39,7 @@ class PhysicsWorld:
 
         self._bullet_world = BulletWorld()
         self._bullet_world.setGravity(Vec3(self.gravity[0], self.gravity[1], self.gravity[2]))
+        logger.info("Physics backend initialized")
 
     def add_body(self, entity: Entity, body: RigidBody):
         """Register a dynamic rigid body."""
@@ -80,6 +85,7 @@ class PhysicsWorld:
         
         # Store mapping
         self._node_to_entity[node] = entity
+        # logger.debug(f"Added rigid body for Entity {entity.id}")
 
     def add_static_body(self, entity: Entity):
         """Register a static collision body (e.g. terrain)."""
@@ -111,6 +117,7 @@ class PhysicsWorld:
         # Add to world
         self._bullet_world.attachRigidBody(node)
         self._node_to_entity[node] = entity
+        # logger.debug(f"Added static body for Entity {entity.id}")
 
     def remove_body(self, body: RigidBody):
         """Unregister a rigid body."""
@@ -121,6 +128,7 @@ class PhysicsWorld:
                 if body._bullet_body in self._node_to_entity:
                     del self._node_to_entity[body._bullet_body]
                 body._bullet_body = None
+                # logger.debug(f"Removed rigid body for Entity {body.entity.id if body.entity else 'Unknown'}")
 
     def step(self, dt: float):
         """Step physics simulation."""
@@ -212,3 +220,4 @@ class PhysicsWorld:
         self.bodies.clear()
         self._node_to_entity.clear()
         self._bullet_world = None
+        logger.info("Physics world shutdown")

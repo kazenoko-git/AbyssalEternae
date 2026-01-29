@@ -49,25 +49,25 @@ class Logger:
         file_handler.setFormatter(file_formatter)
         self.logger.addHandler(file_handler)
 
-    def debug(self, message: str):
+    def debug(self, message: str, *args):
         """Log debug message."""
-        self.logger.debug(message)
+        self.logger.debug(message, *args)
 
-    def info(self, message: str):
+    def info(self, message: str, *args):
         """Log info message."""
-        self.logger.info(message)
+        self.logger.info(message, *args)
 
-    def warning(self, message: str):
+    def warning(self, message: str, *args):
         """Log warning message."""
-        self.logger.warning(message)
+        self.logger.warning(message, *args)
 
-    def error(self, message: str, exc_info: bool = False):
+    def error(self, message: str, *args, exc_info: bool = False):
         """Log error message."""
-        self.logger.error(message, exc_info=exc_info)
+        self.logger.error(message, *args, exc_info=exc_info)
 
-    def critical(self, message: str, exc_info: bool = False):
+    def critical(self, message: str, *args, exc_info: bool = False):
         """Log critical message."""
-        self.logger.critical(message, exc_info=exc_info)
+        self.logger.critical(message, *args, exc_info=exc_info)
 
 
 # Global logger instance

@@ -7,7 +7,9 @@ from aurora_engine.rendering.mesh import Mesh, create_cube_mesh, create_sphere_m
 from aurora_engine.rendering.shader import Shader
 from aurora_engine.rendering.material import Material
 from panda3d.core import NodePath
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class AssetLoader:
     """
@@ -25,9 +27,11 @@ class AssetLoader:
             import builtins
             if hasattr(builtins, 'base'):
                 # Panda3D loader caches automatically
-                return builtins.base.loader.loadModel(path)
+                model = builtins.base.loader.loadModel(path)
+                logger.info(f"Loaded model: {path}")
+                return model
         except Exception as e:
-            print(f"Failed to load model {path}: {e}")
+            logger.error(f"Failed to load model {path}: {e}")
         return None
 
     @staticmethod
@@ -44,7 +48,7 @@ class AssetLoader:
         # For actual files, we prefer load_model which returns a NodePath.
         # If we need a Mesh object (raw data), we'd need to extract it from the NodePath.
         # For now, we assume this is used for procedural fallbacks.
-        print(f"Warning: Mesh loading not implemented for {path}, returning cube.")
+        logger.warning(f"Mesh loading not implemented for {path}, returning cube.")
         return create_cube_mesh()
 
     @staticmethod
@@ -66,20 +70,27 @@ class AssetLoader:
         """Load a material from JSON definition."""
         if not os.path.exists(path):
             # Return default material
+            logger.warning(f"Material file not found: {path}, using default")
             shader = AssetLoader.load_shader("shaders/default")
             return Material("Default", shader)
             
-        with open(path, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+                
+            shader_path = data.get('shader', 'shaders/default')
+            shader = AssetLoader.load_shader(shader_path)
             
-        shader_path = data.get('shader', 'shaders/default')
-        shader = AssetLoader.load_shader(shader_path)
-        
-        material = Material(data.get('name', 'Material'), shader)
-        
-        # Load properties
-        props = data.get('properties', {})
-        for name, value in props.items():
-            material.set_property(name, value)
+            material = Material(data.get('name', 'Material'), shader)
             
-        return material
+            # Load properties
+            props = data.get('properties', {})
+            for name, value in props.items():
+                material.set_property(name, value)
+                
+            logger.info(f"Loaded material: {path}")
+            return material
+        except Exception as e:
+            logger.error(f"Failed to load material {path}: {e}")
+            shader = AssetLoader.load_shader("shaders/default")
+            return Material("Error", shader)

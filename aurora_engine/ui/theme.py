@@ -1,6 +1,9 @@
 # aurora_engine/ui/theme.py
 
 from typing import Dict, Any, TYPE_CHECKING
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 if TYPE_CHECKING:
     from aurora_engine.ui.widget import Widget
@@ -44,6 +47,7 @@ class UITheme:
             'margin': 5,
             'border_width': 2,
         }
+        # logger.debug(f"UITheme '{name}' initialized")
 
     def get_color(self, name: str) -> tuple:
         """Get color by name."""

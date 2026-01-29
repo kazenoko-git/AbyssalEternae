@@ -4,12 +4,18 @@ from aurora_engine.ecs.system import System
 from aurora_engine.rendering.mesh import MeshRenderer
 from game.components.fade_in import FadeInEffect
 from panda3d.core import TransparencyAttrib
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class FadeInSystem(System):
     """
     System to update FadeInEffect components.
     """
+
+    def __init__(self):
+        super().__init__()
+        # logger.debug("FadeInSystem initialized")
 
     def get_required_components(self):
         return [FadeInEffect, MeshRenderer]
@@ -37,3 +43,4 @@ class FadeInSystem(System):
             if progress >= 1.0:
                 renderer._node_path.clearTransparency()
                 entity.remove_component(FadeInEffect)
+                # logger.debug(f"Fade-in complete for Entity {entity.id}")

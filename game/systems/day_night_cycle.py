@@ -6,6 +6,9 @@ from aurora_engine.rendering.mesh import MeshRenderer, create_sphere_mesh
 from panda3d.core import Vec4, DirectionalLight, AmbientLight, Fog
 import numpy as np
 import math
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class DayNightCycle(System):
     """
@@ -27,6 +30,7 @@ class DayNightCycle(System):
         
         self._setup_lights()
         self._setup_color_gradient()
+        # logger.debug("DayNightCycle initialized")
 
     def _setup_lights(self):
         # Sun Light

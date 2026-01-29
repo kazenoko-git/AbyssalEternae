@@ -3,6 +3,9 @@
 from game.utils.terrain import perlin_noise_2d, ridged_noise_2d
 import random
 import numpy as np
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class CivilizationGenerator:
     """
@@ -12,6 +15,7 @@ class CivilizationGenerator:
     def __init__(self, seed: int):
         self.seed = seed
         self.rng = random.Random(seed)
+        # logger.debug(f"CivilizationGenerator initialized with seed {seed}")
 
     def get_civilization_data(self, x: float, y: float, biome_data: dict) -> dict:
         """

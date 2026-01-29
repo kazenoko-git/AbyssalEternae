@@ -3,7 +3,9 @@
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
 from aurora_engine.utils.math import matrix_to_quaternion
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class OrbitCameraController(CameraController):
     """
@@ -21,6 +23,7 @@ class OrbitCameraController(CameraController):
         
         # Target
         self.target_pos = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        # logger.debug("OrbitCameraController initialized")
 
     def update(self, dt: float):
         """Update camera position and rotation."""

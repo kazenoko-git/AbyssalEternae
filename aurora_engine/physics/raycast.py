@@ -3,7 +3,11 @@
 import numpy as np
 from typing import Optional, List
 from dataclasses import dataclass
+from aurora_engine.ecs.entity import Entity
+from aurora_engine.physics.collider import Collider
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 @dataclass
 class RaycastHit:

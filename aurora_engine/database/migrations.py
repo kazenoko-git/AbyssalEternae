@@ -2,7 +2,9 @@
 
 from typing import List, Callable
 from aurora_engine.database.db_manager import DatabaseManager
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Migration:
     """Single database migration."""
@@ -55,7 +57,7 @@ class MigrationManager:
 
         for migration in self.migrations:
             if migration.version > current_version:
-                print(f"Applying migration {migration.version}: {migration.description}")
+                logger.info(f"Applying migration {migration.version}: {migration.description}")
 
                 try:
                     migration.upgrade(self.db)
@@ -67,10 +69,10 @@ class MigrationManager:
                     )
                     self.db.commit()
 
-                    print(f"Migration {migration.version} applied successfully")
+                    logger.info(f"Migration {migration.version} applied successfully")
                 except Exception as e:
                     self.db.rollback()
-                    print(f"Migration {migration.version} failed: {e}")
+                    logger.error(f"Migration {migration.version} failed: {e}")
                     raise
 
     def rollback(self, target_version: int):
@@ -79,7 +81,7 @@ class MigrationManager:
 
         for migration in reversed(self.migrations):
             if migration.version > target_version and migration.version <= current_version:
-                print(f"Rolling back migration {migration.version}: {migration.description}")
+                logger.info(f"Rolling back migration {migration.version}: {migration.description}")
 
                 try:
                     migration.downgrade(self.db)
@@ -90,10 +92,10 @@ class MigrationManager:
                     )
                     self.db.commit()
 
-                    print(f"Migration {migration.version} rolled back")
+                    logger.info(f"Migration {migration.version} rolled back")
                 except Exception as e:
                     self.db.rollback()
-                    print(f"Rollback of migration {migration.version} failed: {e}")
+                    logger.error(f"Rollback of migration {migration.version} failed: {e}")
                     raise
 
 
@@ -106,11 +108,8 @@ def create_example_migration():
 
     def downgrade(db: DatabaseManager):
         # SQLite doesn't support DROP COLUMN easily, need to recreate table
-        db.execute("""
-            CREATE TABLE npcs_backup AS SELECT npc_id, name, personality, background, created_at FROM npcs
-        """)
-        db.execute("DROP TABLE npcs")
-        db.execute("ALTER TABLE npcs_backup RENAME TO npcs")
+        # MySQL supports DROP COLUMN
+        db.execute("ALTER TABLE npcs DROP COLUMN reputation")
 
     return Migration(
         version=2,

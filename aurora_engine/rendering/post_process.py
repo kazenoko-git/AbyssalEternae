@@ -2,7 +2,9 @@
 
 from panda3d.core import Texture, Shader
 from direct.filter.FilterManager import FilterManager
-import logging
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class PostProcessEffect:
     """
@@ -54,8 +56,9 @@ class OutlineEffect(PostProcessEffect):
                 if self.quad:
                     # Placeholder shader setup
                     pass
+                logger.info("OutlineEffect initialized")
             except Exception as e:
-                logging.warning(f"Failed to initialize OutlineEffect: {e}")
+                logger.warning(f"Failed to initialize OutlineEffect: {e}")
                 self.enabled = False
 
     def apply(self, renderer):
@@ -92,8 +95,9 @@ class BloomEffect(PostProcessEffect):
                 if self.quad:
                     # Placeholder shader setup
                     pass
+                logger.info("BloomEffect initialized")
             except Exception as e:
-                logging.warning(f"Failed to initialize BloomEffect: {e}")
+                logger.warning(f"Failed to initialize BloomEffect: {e}")
                 self.enabled = False
 
     def apply(self, renderer):

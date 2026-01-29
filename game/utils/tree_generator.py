@@ -3,6 +3,9 @@
 import numpy as np
 from aurora_engine.rendering.mesh import Mesh
 import random
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 def create_procedural_tree_mesh(seed: int, height: float = 4.0, radius: float = 0.5, tree_type: str = "Oak") -> Mesh:
     """

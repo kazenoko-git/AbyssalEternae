@@ -3,7 +3,9 @@
 from typing import List, Dict, Any
 from aurora_engine.rendering.material import Material
 from aurora_engine.rendering.post_process import PostProcessEffect
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class RenderPass:
     """A single rendering pass (e.g., shadow pass, main pass, post-process)."""
@@ -31,14 +33,17 @@ class RenderPipeline:
 
         # Render targets
         self.render_targets: Dict[str, Any] = {}
+        # logger.debug("RenderPipeline initialized")
 
     def add_pass(self, render_pass: RenderPass):
         """Add a render pass."""
         self.passes.append(render_pass)
+        # logger.debug(f"Added render pass: {render_pass.name}")
 
     def add_post_effect(self, effect: PostProcessEffect):
         """Add post-processing effect."""
         self.post_effects.append(effect)
+        # logger.debug(f"Added post-process effect: {effect.name}")
 
     def execute(self, renderer):
         """Execute all render passes."""

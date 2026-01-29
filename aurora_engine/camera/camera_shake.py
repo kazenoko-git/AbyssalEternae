@@ -2,7 +2,9 @@
 
 import numpy as np
 import random
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class CameraShake:
     """
@@ -33,6 +35,7 @@ class CameraShake:
         Trauma decays over time and creates shake.
         """
         self.trauma = min(1.0, self.trauma + amount)
+        # logger.debug(f"Added trauma: {amount}, current: {self.trauma}")
 
     def trigger(self, intensity: float, duration: float):
         """Trigger a camera shake."""
@@ -40,6 +43,7 @@ class CameraShake:
         self.intensity = intensity
         self.duration = duration
         self.elapsed = 0.0
+        # logger.debug(f"Triggered camera shake: intensity={intensity}, duration={duration}")
 
     def update(self, dt: float):
         """Update shake effect."""

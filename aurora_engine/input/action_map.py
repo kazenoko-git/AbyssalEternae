@@ -2,7 +2,9 @@
 
 from typing import Dict, List, Callable, Tuple
 from enum import Enum
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class InputDevice(Enum):
     KEYBOARD = 1
@@ -20,6 +22,7 @@ class Action:
     def add_binding(self, device: InputDevice, key: str):
         """Bind an input to this action."""
         self.bindings.append((device, key))
+        # logger.debug(f"Bound {device.name}:{key} to action '{self.name}'")
 
 
 class ActionMap:
@@ -35,6 +38,7 @@ class ActionMap:
         """Create a new action."""
         action = Action(name)
         self.actions[name] = action
+        # logger.debug(f"Created action '{name}'")
         return action
 
     def get_action(self, name: str) -> Action:

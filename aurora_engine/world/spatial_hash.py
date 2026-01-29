@@ -3,7 +3,9 @@
 from typing import Dict, List, Set
 import numpy as np
 from aurora_engine.ecs.entity import Entity
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class SpatialHash:
     """
@@ -19,6 +21,8 @@ class SpatialHash:
 
         # Entity positions (for updates)
         self.entity_positions: Dict[Entity, np.ndarray] = {}
+
+        # logger.debug(f"SpatialHash initialized with cell_size={cell_size}")
 
     def insert(self, entity: Entity, position: np.ndarray):
         """Insert entity at position."""

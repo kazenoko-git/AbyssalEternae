@@ -2,7 +2,9 @@
 
 from typing import List, Optional, Dict, Any
 from aurora_engine.scene.transform import Transform
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class SceneNode:
     """
@@ -22,6 +24,7 @@ class SceneNode:
         # Metadata
         self.tags: List[str] = []
         self.active = True
+        # logger.debug(f"SceneNode '{name}' created")
 
     def add_child(self, child: 'SceneNode'):
         """Add a child node."""
@@ -33,6 +36,7 @@ class SceneNode:
         
         # Link transforms
         child.transform.set_parent(self.transform)
+        # logger.debug(f"Added child '{child.name}' to '{self.name}'")
 
     def remove_child(self, child: 'SceneNode'):
         """Remove a child node."""
@@ -40,6 +44,7 @@ class SceneNode:
             self.children.remove(child)
             child.parent = None
             child.transform.set_parent(None)
+            # logger.debug(f"Removed child '{child.name}' from '{self.name}'")
 
     def find_child(self, name: str, recursive: bool = True) -> Optional['SceneNode']:
         """Find a child by name."""

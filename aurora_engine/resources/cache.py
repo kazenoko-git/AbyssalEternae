@@ -2,7 +2,9 @@
 
 from typing import Dict, Any, Type, Optional
 import time
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class ResourceCache:
     """
@@ -14,6 +16,7 @@ class ResourceCache:
         self._ref_counts: Dict[str, int] = {}
         self._timestamps: Dict[str, float] = {}
         self.default_ttl = 60.0  # Time to live in seconds for unused resources
+        # logger.debug("ResourceCache initialized")
 
     def get(self, key: str) -> Optional[Any]:
         """Retrieve a resource and increment ref count."""
@@ -29,6 +32,7 @@ class ResourceCache:
             self._resources[key] = resource
             self._ref_counts[key] = 1
             self._timestamps[key] = time.time()
+            # logger.debug(f"Added resource '{key}' to cache")
         else:
             self._ref_counts[key] += 1
 
@@ -55,9 +59,11 @@ class ResourceCache:
             del self._resources[key]
             del self._ref_counts[key]
             del self._timestamps[key]
+            # logger.debug(f"Cleaned up resource '{key}' from cache")
 
     def clear(self):
         """Clear all resources."""
         self._resources.clear()
         self._ref_counts.clear()
         self._timestamps.clear()
+        logger.info("Resource cache cleared")

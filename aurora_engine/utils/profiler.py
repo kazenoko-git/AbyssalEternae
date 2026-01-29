@@ -3,7 +3,9 @@
 import time
 from typing import Dict
 from collections import defaultdict
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Profiler:
     """
@@ -43,14 +45,15 @@ class Profiler:
 
     def print_report(self):
         """Print performance report."""
-        print("\n=== Performance Report ===")
+        report = "\n=== Performance Report ===\n"
         for section, times in sorted(self.timings.items()):
             avg_time = self.get_average(section)
             max_time = max(times) if times else 0.0
             min_time = min(times) if times else 0.0
 
-            print(f"{section:30s}: avg={avg_time:6.2f}ms  min={min_time:6.2f}ms  max={max_time:6.2f}ms")
-        print("==========================\n")
+            report += f"{section:30s}: avg={avg_time:6.2f}ms  min={min_time:6.2f}ms  max={max_time:6.2f}ms\n"
+        report += "==========================\n"
+        logger.info(report)
 
 
 # Global profiler instance

@@ -2,7 +2,9 @@
 
 import numpy as np
 from aurora_engine.scene.transform import Transform
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Camera:
     """
@@ -22,6 +24,8 @@ class Camera:
         # State
         self.active = False
         self.priority = 0  # Higher priority overrides
+        
+        # logger.debug("Camera initialized")
 
     def get_view_matrix(self) -> np.ndarray:
         """Get view matrix (inverse of camera transform)."""

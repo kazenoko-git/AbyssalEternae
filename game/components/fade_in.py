@@ -1,7 +1,9 @@
 # game/components/fade_in.py
 
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class FadeInEffect(Component):
     """
@@ -13,3 +15,4 @@ class FadeInEffect(Component):
         self.duration = duration
         self.elapsed = 0.0
         self.current_alpha = 0.0
+        # logger.debug(f"FadeInEffect created (duration={duration}s)")

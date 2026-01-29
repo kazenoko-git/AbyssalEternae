@@ -2,7 +2,9 @@
 
 import numpy as np
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class RigidBody(Component):
     """
@@ -27,6 +29,8 @@ class RigidBody(Component):
         # Physics backend handle (Panda3D BulletRigidBodyNode)
         self._bullet_body = None
         self._velocity_dirty = False
+        
+        # logger.debug("RigidBody created")
 
     def add_force(self, force: np.ndarray):
         """Apply force to center of mass."""

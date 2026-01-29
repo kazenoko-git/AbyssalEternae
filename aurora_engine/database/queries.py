@@ -2,7 +2,9 @@
 
 from typing import List, Dict, Optional, Any
 from aurora_engine.database.db_manager import DatabaseManager
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class PreparedQueries:
     """
@@ -33,6 +35,7 @@ class PreparedQueries:
             self.db.commit()
             return True
         except Exception as e:
+            logger.error(f"Failed to create NPC {npc_id}: {e}")
             self.db.rollback()
             return False
 
@@ -53,7 +56,8 @@ class PreparedQueries:
             )
             self.db.commit()
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to update NPC {npc_id}: {e}")
             self.db.rollback()
             return False
 
@@ -62,12 +66,16 @@ class PreparedQueries:
                        emotional_impact: float = 0.0):
         """Add memory for NPC."""
         import time
-        self.db.execute(
-            """INSERT INTO npc_memory (npc_id, event_type, description, emotional_impact, timestamp)
-               VALUES (?, ?, ?, ?, ?)""",
-            (npc_id, event_type, description, emotional_impact, int(time.time()))
-        )
-        self.db.commit()
+        try:
+            self.db.execute(
+                """INSERT INTO npc_memory (npc_id, event_type, description, emotional_impact, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (npc_id, event_type, description, emotional_impact, int(time.time()))
+            )
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to add memory for NPC {npc_id}: {e}")
+            self.db.rollback()
 
     def get_npc_memories(self, npc_id: str, limit: int = 10) -> List[Dict]:
         """Get recent NPC memories."""
@@ -93,12 +101,16 @@ class PreparedQueries:
                      objectives: str, rewards: str, status: str = 'available'):
         """Create new quest."""
         import time
-        self.db.execute(
-            """INSERT INTO quests (quest_id, title, description, objectives, rewards, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (quest_id, title, description, objectives, rewards, status, int(time.time()))
-        )
-        self.db.commit()
+        try:
+            self.db.execute(
+                """INSERT INTO quests (quest_id, title, description, objectives, rewards, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (quest_id, title, description, objectives, rewards, status, int(time.time()))
+            )
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to create quest {quest_id}: {e}")
+            self.db.rollback()
 
     def get_quest(self, quest_id: str) -> Optional[Dict]:
         """Get quest by ID."""
@@ -116,11 +128,15 @@ class PreparedQueries:
 
     def update_quest_status(self, quest_id: str, status: str):
         """Update quest status."""
-        self.db.execute(
-            "UPDATE quests SET status = ? WHERE quest_id = ?",
-            (status, quest_id)
-        )
-        self.db.commit()
+        try:
+            self.db.execute(
+                "UPDATE quests SET status = ? WHERE quest_id = ?",
+                (status, quest_id)
+            )
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update quest status for {quest_id}: {e}")
+            self.db.rollback()
 
     # AI Cache Queries
     def get_cached_content(self, content_type: str, prompt_hash: str) -> Optional[str]:
@@ -135,10 +151,14 @@ class PreparedQueries:
     def cache_content(self, content_type: str, prompt_hash: str, content: str, metadata: str = None):
         """Cache AI-generated content."""
         import time
-        self.db.execute(
-            """INSERT OR REPLACE INTO ai_cache 
-               (content_type, prompt_hash, generated_content, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (content_type, prompt_hash, content, metadata, int(time.time()))
-        )
-        self.db.commit()
+        try:
+            self.db.execute(
+                """INSERT OR REPLACE INTO ai_cache 
+                   (content_type, prompt_hash, generated_content, metadata, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (content_type, prompt_hash, content, metadata, int(time.time()))
+            )
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to cache content: {e}")
+            self.db.rollback()

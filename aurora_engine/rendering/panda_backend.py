@@ -4,7 +4,9 @@ import numpy as np
 from panda3d.core import *
 from aurora_engine.rendering.mesh import Mesh
 import weakref
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class PandaBackend:
     """
@@ -20,6 +22,7 @@ class PandaBackend:
         
         # Use a standard dictionary for explicit control
         self._mesh_cache = {}
+        # logger.debug("PandaBackend initialized")
 
     def initialize(self):
         """Initialize Panda3D."""
@@ -50,6 +53,7 @@ class PandaBackend:
         
         # Set Clear Color to Sky Blue
         self.base.setBackgroundColor(0.53, 0.8, 0.92, 1)
+        logger.info("Panda3D initialized")
 
     def clear_buffers(self):
         """Clear color and depth buffers."""
@@ -110,6 +114,7 @@ class PandaBackend:
         """Explicitly remove a mesh from the cache."""
         if mesh in self._mesh_cache:
             del self._mesh_cache[mesh]
+            # logger.debug(f"Unloaded mesh '{mesh.name}' from backend")
 
     def _upload_mesh(self, mesh: Mesh):
         """Convert Mesh to Panda3D GeomNode."""
@@ -160,6 +165,7 @@ class PandaBackend:
         node.addGeom(geom)
         
         self._mesh_cache[mesh] = node
+        # logger.debug(f"Uploaded mesh '{mesh.name}' to backend")
 
     def present(self):
         """Present rendered frame."""
@@ -171,3 +177,4 @@ class PandaBackend:
         if self.base:
             # self.base.destroy() # Usually we don't destroy base if it's global
             pass
+        logger.info("PandaBackend shutdown")

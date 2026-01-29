@@ -4,7 +4,9 @@ from aurora_engine.ecs.system import System
 from aurora_engine.ui.dialogue_box import DialogueBox
 from game.components.npc import NPCController
 from game.ai.ai_generator import AIContentGenerator
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class DialogueSystem(System):
     """
@@ -22,6 +24,7 @@ class DialogueSystem(System):
         from aurora_engine.core.application import Application
         # Access via game instance
         self.ai_generator = None  # Set by game
+        # logger.debug("DialogueSystem initialized")
 
     def get_required_components(self):
         return [NPCController]
@@ -36,6 +39,7 @@ class DialogueSystem(System):
         """Begin dialogue with an NPC."""
         npc_controller = npc_entity.get_component(NPCController)
         self.active_npc = npc_entity
+        logger.info(f"Starting dialogue with NPC {npc_controller.npc_id}")
 
         # Generate greeting
         context = {
@@ -105,4 +109,7 @@ class DialogueSystem(System):
         """End current dialogue."""
         self.dialogue_box.visible = False
         self.ui_manager.remove_widget(self.dialogue_box)
+        if self.active_npc:
+            npc_controller = self.active_npc.get_component(NPCController)
+            logger.info(f"Ending dialogue with NPC {npc_controller.npc_id}")
         self.active_npc = None

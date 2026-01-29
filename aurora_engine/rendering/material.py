@@ -3,7 +3,9 @@
 from typing import Dict, Any, Optional
 from aurora_engine.rendering.shader import Shader
 from panda3d.core import RenderState, ColorBlendAttrib, CullFaceAttrib
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class MaterialProperty:
     """A single material property (color, texture, float, etc.)."""
@@ -31,6 +33,8 @@ class Material:
         self.cull_mode = "back"  # "back", "front", "none"
         self.depth_write = True
         self.blend_mode = "opaque"  # "opaque", "alpha", "additive"
+        
+        # logger.debug(f"Material '{name}' created with shader '{shader.name}'")
 
     def set_property(self, name: str, value: Any):
         """Set material property."""

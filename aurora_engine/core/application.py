@@ -43,7 +43,7 @@ class Application(ABC):
 
     def run(self):
         """Main game loop with fixed timestep."""
-        self.logger.info("Starting application")
+        self.logger.info("Starting application loop")
         self.initialize()
         self.running = True
 
@@ -92,17 +92,25 @@ class Application(ABC):
         self.logger.info("Initializing subsystems")
 
         try:
+            self.logger.debug("Initializing Renderer")
             self.renderer.initialize()
+            
+            self.logger.debug("Initializing Physics")
             self.physics.initialize()
+            
+            self.logger.debug("Initializing UI")
             self.ui.initialize()
             
             # Initialize Input with Backend
+            self.logger.debug("Initializing Input")
             self.input.initialize(self.renderer.backend)
             
             # Register Physics Systems
+            self.logger.debug("Registering Physics Systems")
             self.world.add_system(DynamicPhysicsSystem(self.physics))
             self.world.add_system(StaticPhysicsSystem(self.physics))
             
+            self.logger.info("Initializing Game")
             self.initialize_game()
         except Exception as e:
             self.logger.critical(f"Initialization failed: {e}", exc_info=True)

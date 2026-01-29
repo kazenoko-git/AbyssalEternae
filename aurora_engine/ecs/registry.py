@@ -3,7 +3,9 @@
 from typing import Dict, Type
 from aurora_engine.ecs.component import Component
 from aurora_engine.ecs.system import System
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class ComponentRegistry:
     """
@@ -17,6 +19,7 @@ class ComponentRegistry:
     def register(cls, name: str, component_class: Type[Component]):
         """Register a component type."""
         cls._components[name] = component_class
+        # logger.debug(f"Registered component: {name}")
 
     @classmethod
     def get(cls, name: str) -> Type[Component]:
@@ -41,6 +44,7 @@ class SystemRegistry:
     def register(cls, name: str, system_class: Type[System]):
         """Register a system type."""
         cls._systems[name] = system_class
+        # logger.debug(f"Registered system: {name}")
 
     @classmethod
     def get(cls, name: str) -> Type[System]:

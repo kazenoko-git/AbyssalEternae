@@ -2,7 +2,9 @@
 
 from abc import ABC, abstractmethod
 from aurora_engine.camera.camera import Camera
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class CameraController(ABC):
     """
@@ -13,6 +15,7 @@ class CameraController(ABC):
     def __init__(self, camera: Camera):
         self.camera = camera
         self.enabled = True
+        # logger.debug(f"{self.__class__.__name__} initialized")
 
     @abstractmethod
     def update(self, dt: float):

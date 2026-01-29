@@ -4,6 +4,7 @@ from typing import List, Dict, Type
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.ecs.system import System
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
 
 class World:
@@ -16,11 +17,13 @@ class World:
         self.entities: List[Entity] = []
         self.systems: List[System] = []
         self._component_cache: Dict[Type[Component], List[Entity]] = {}
+        self.logger = get_logger()
 
     def create_entity(self) -> Entity:
         """Create a new entity."""
         entity = Entity()
         self.entities.append(entity)
+        # self.logger.debug(f"Created entity {entity.id}") # Too verbose for every entity
         return entity
 
     def destroy_entity(self, entity: Entity):
@@ -29,18 +32,24 @@ class World:
             # Clean up components
             for component in entity.components.values():
                 if hasattr(component, 'on_destroy'):
-                    component.on_destroy()
+                    try:
+                        component.on_destroy()
+                    except Exception as e:
+                        self.logger.error(f"Error destroying component {type(component).__name__} on entity {entity.id}: {e}")
+                
                 # Break circular reference
                 component.entity = None
 
             entity.components.clear()
             self.entities.remove(entity)
             self._invalidate_cache()
+            # self.logger.debug(f"Destroyed entity {entity.id}")
 
     def add_system(self, system: System):
         """Register a system."""
         self.systems.append(system)
         self.systems.sort(key=lambda s: s.priority)
+        self.logger.info(f"Registered system {type(system).__name__} with priority {system.priority}")
 
     def update_systems(self, dt: float):
         """Update all systems."""
@@ -48,9 +57,12 @@ class World:
             if not system.enabled:
                 continue
 
-            # Get entities matching system's requirements
-            entities = self._get_entities_for_system(system)
-            system.update(entities, dt)
+            try:
+                # Get entities matching system's requirements
+                entities = self._get_entities_for_system(system)
+                system.update(entities, dt)
+            except Exception as e:
+                self.logger.error(f"System {type(system).__name__} update failed: {e}", exc_info=True)
 
     def interpolate_transforms(self, alpha: float):
         """Interpolate transforms for smooth rendering."""

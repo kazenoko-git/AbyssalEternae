@@ -3,7 +3,9 @@
 import numpy as np
 from typing import Optional, List
 from aurora_engine.utils.math import quaternion_to_matrix, quaternion_multiply, quaternion_slerp
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 # Helper functions for quaternion and matrix math
 def quaternion_inverse(q: np.ndarray) -> np.ndarray:

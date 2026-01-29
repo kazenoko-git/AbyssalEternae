@@ -3,7 +3,9 @@
 from aurora_engine.ui.widget import Panel, Label, Button
 from typing import List
 import numpy as np
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class DialogueBox(Panel):
     """
@@ -37,6 +39,7 @@ class DialogueBox(Panel):
         # Choices
         self.choices: List[str] = []
         self.choice_buttons: List[Button] = []
+        # logger.debug("DialogueBox initialized")
 
     def show_dialogue(self, speaker: str, text: str):
         """Display new dialogue."""
@@ -45,6 +48,7 @@ class DialogueBox(Panel):
         self.displayed_text = ""
         self.text_progress = 0.0
         self.visible = True
+        # logger.debug(f"Showing dialogue: {speaker}: {text[:20]}...")
 
     def add_choice(self, choice_text: str, callback):
         """Add a dialogue choice button."""

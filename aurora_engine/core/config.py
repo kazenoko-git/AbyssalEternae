@@ -4,7 +4,9 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Config:
     """
@@ -60,22 +62,32 @@ class Config:
     def load(self):
         """Load configuration from file."""
         if self.config_path.exists():
-            with open(self.config_path, 'r') as f:
-                loaded_data = json.load(f)
+            try:
+                with open(self.config_path, 'r') as f:
+                    loaded_data = json.load(f)
 
-            # Merge with defaults (loaded values override defaults)
-            self.data = self._deep_merge(self.defaults.copy(), loaded_data)
+                # Merge with defaults (loaded values override defaults)
+                self.data = self._deep_merge(self.defaults.copy(), loaded_data)
+                logger.info(f"Loaded configuration from {self.config_path}")
+            except Exception as e:
+                logger.error(f"Failed to load configuration from {self.config_path}: {e}")
+                self.data = self.defaults.copy()
         else:
             # Use defaults
             self.data = self.defaults.copy()
+            logger.info(f"Configuration file not found, using defaults and creating {self.config_path}")
             self.save()  # Create default config file
 
     def save(self):
         """Save configuration to file."""
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(self.config_path, 'w') as f:
-            json.dump(self.data, f, indent=2)
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(self.data, f, indent=2)
+            logger.info(f"Saved configuration to {self.config_path}")
+        except Exception as e:
+            logger.error(f"Failed to save configuration to {self.config_path}: {e}")
 
     def get(self, path: str, default: Any = None) -> Any:
         """

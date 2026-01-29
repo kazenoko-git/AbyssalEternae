@@ -2,7 +2,9 @@
 
 from typing import Optional, List
 import numpy as np
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Widget:
     """
@@ -31,6 +33,8 @@ class Widget:
         # Events
         self.on_click = None
         self.on_hover = None
+        
+        # logger.debug(f"Widget '{name}' created")
 
     def add_child(self, child: 'Widget'):
         """Add child widget."""

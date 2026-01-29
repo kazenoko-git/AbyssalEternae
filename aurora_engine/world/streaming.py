@@ -5,7 +5,9 @@ from typing import Dict, Tuple, List
 from aurora_engine.world.chunk import Chunk
 from aurora_engine.scene.transform import Transform
 from aurora_engine.database.db_manager import DatabaseManager
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class StreamingManager:
     """
@@ -26,6 +28,8 @@ class StreamingManager:
 
         # Streaming focus (usually player position)
         self.focus_position = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
+        logger.info(f"StreamingManager initialized with chunk_size={chunk_size}")
 
     def set_focus(self, position: np.ndarray):
         """Set streaming focus position (e.g., player location)."""

@@ -4,7 +4,9 @@ from typing import Dict, Any, List
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.ecs.component import Component
 import json
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Prefab:
     """
@@ -33,7 +35,7 @@ class Prefab:
                 component = self._deserialize_component(component_data)
                 entity.add_component(component)
             except Exception as e:
-                print(f"Failed to instantiate component {component_data.get('type')}: {e}")
+                logger.error(f"Failed to instantiate component {component_data.get('type')}: {e}")
 
         return entity
 
@@ -77,16 +79,24 @@ class Prefab:
             'components': self.components
         }
 
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"Saved prefab '{self.name}' to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save prefab '{self.name}' to {filepath}: {e}")
 
     @staticmethod
     def load(filepath: str) -> 'Prefab':
         """Load prefab from file."""
-        with open(filepath, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
 
-        prefab = Prefab(data['name'])
-        prefab.components = data['components']
-
-        return prefab
+            prefab = Prefab(data['name'])
+            prefab.components = data['components']
+            logger.info(f"Loaded prefab '{prefab.name}' from {filepath}")
+            return prefab
+        except Exception as e:
+            logger.error(f"Failed to load prefab from {filepath}: {e}")
+            return Prefab("Error")

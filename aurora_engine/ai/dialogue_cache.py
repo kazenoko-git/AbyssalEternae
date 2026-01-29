@@ -4,7 +4,9 @@ from aurora_engine.database.db_manager import DatabaseManager
 import hashlib
 import json
 import time
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class DialogueCache:
     """
@@ -32,12 +34,15 @@ class DialogueCache:
 
     def cache_response(self, prompt: str, context: dict, response: str, metadata: dict = None):
         """Store generated dialogue in cache."""
-        prompt_hash = self._compute_prompt_hash(prompt, context)
-        metadata_json = json.dumps(metadata) if metadata else None
+        try:
+            prompt_hash = self._compute_prompt_hash(prompt, context)
+            metadata_json = json.dumps(metadata) if metadata else None
 
-        self.db.execute("""
-            INSERT OR REPLACE INTO ai_cache (content_type, prompt_hash, generated_content, metadata, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('dialogue', prompt_hash, response, metadata_json, int(time.time())))
+            self.db.execute("""
+                INSERT OR REPLACE INTO ai_cache (content_type, prompt_hash, generated_content, metadata, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, ('dialogue', prompt_hash, response, metadata_json, int(time.time())))
 
-        self.db.commit()
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to cache dialogue response: {e}")

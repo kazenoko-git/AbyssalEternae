@@ -2,7 +2,9 @@
 
 from typing import Dict, Type
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Entity:
     """
@@ -17,12 +19,14 @@ class Entity:
         Entity._next_id += 1
         self.components: Dict[Type[Component], Component] = {}
         self.active = True
+        # logger.debug(f"Entity {self.id} created") # Too verbose
 
     def add_component(self, component: Component):
         """Attach a component."""
         component_type = type(component)
         self.components[component_type] = component
         component.entity = self
+        # logger.debug(f"Added component {component_type.__name__} to Entity {self.id}")
         return component
 
     def get_component(self, component_type: Type[Component]):
@@ -37,3 +41,4 @@ class Entity:
         """Remove a component."""
         if component_type in self.components:
             del self.components[component_type]
+            # logger.debug(f"Removed component {component_type.__name__} from Entity {self.id}")

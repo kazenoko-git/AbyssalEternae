@@ -2,7 +2,9 @@
 
 import numpy as np
 from typing import Tuple
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 def quaternion_from_euler(euler: np.ndarray) -> np.ndarray:
     """

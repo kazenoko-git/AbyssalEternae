@@ -1,6 +1,9 @@
 # aurora_engine/utils/pool.py
 
 from typing import List, Callable, TypeVar, Generic
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 T = TypeVar('T')
 
@@ -20,12 +23,15 @@ class ObjectPool(Generic[T]):
         for _ in range(initial_size):
             self.available.append(factory())
 
+        # logger.debug(f"ObjectPool initialized with {initial_size} items")
+
     def acquire(self) -> T:
         """Get an object from the pool."""
         if self.available:
             obj = self.available.pop()
         else:
             obj = self.factory()
+            # logger.debug("ObjectPool expanded")
 
         self.in_use.append(obj)
         return obj

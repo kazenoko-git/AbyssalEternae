@@ -3,7 +3,9 @@
 from typing import List, Dict, Any, Optional
 from aurora_engine.scene.node import SceneNode
 from aurora_engine.ecs.world import World
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Scene:
     """
@@ -21,6 +23,7 @@ class Scene:
         self.fog_enabled = False
         self.fog_color = (0.5, 0.5, 0.5, 1.0)
         self.fog_density = 0.01
+        logger.info(f"Scene '{name}' initialized")
 
     def update(self, dt: float):
         """Update scene logic."""
@@ -33,11 +36,13 @@ class Scene:
         if parent is None:
             parent = self.root
         parent.add_child(node)
+        # logger.debug(f"Added node '{node.name}' to scene '{self.name}'")
 
     def remove_node(self, node: SceneNode):
         """Remove a node from the scene."""
         if node.parent:
             node.parent.remove_child(node)
+            # logger.debug(f"Removed node '{node.name}' from scene '{self.name}'")
 
     def get_node_by_name(self, name: str) -> Optional[SceneNode]:
         """Find a node by name."""

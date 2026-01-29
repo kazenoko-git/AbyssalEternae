@@ -6,11 +6,14 @@ from game.systems.world_generator import WorldGenerator
 from game.ai.ai_generator import AIContentGenerator
 from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
+from aurora_engine.core.logging import get_logger
 import numpy as np
 import time
 import os
 import psutil
 import json
+
+logger = get_logger()
 
 class ChunkLifecycleTest(Application):
     """
@@ -18,7 +21,7 @@ class ChunkLifecycleTest(Application):
     """
 
     def initialize_game(self):
-        print("Initializing Lifecycle Test...")
+        logger.info("Initializing Lifecycle Test...")
         
         # DB Setup
         db_config = {
@@ -58,7 +61,7 @@ class ChunkLifecycleTest(Application):
         
         # Report
         mem = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
-        print(f"Pos: {self.cam_pos[1]:.1f} | Loaded: {len(self.loaded_chunks)} | Entities: {len(self.world.entities)} | Mem: {mem:.1f} MB")
+        logger.info(f"Pos: {self.cam_pos[1]:.1f} | Loaded: {len(self.loaded_chunks)} | Entities: {len(self.world.entities)} | Mem: {mem:.1f} MB")
 
     def _manage_chunks(self):
         chunk_x = int(self.cam_pos[0] // 100)

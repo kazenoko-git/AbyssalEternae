@@ -4,6 +4,9 @@ from aurora_engine.ecs.system import System
 from aurora_engine.physics.rigidbody import StaticBody
 from aurora_engine.physics.collider import Collider
 from aurora_engine.physics.physics_world import PhysicsWorld
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class StaticPhysicsSystem(System):
     """
@@ -15,6 +18,7 @@ class StaticPhysicsSystem(System):
         super().__init__()
         self.physics_world = physics_world
         self.registered_entities = set()
+        # logger.debug("StaticPhysicsSystem initialized")
 
     def get_required_components(self):
         return [StaticBody, Collider]
@@ -25,6 +29,7 @@ class StaticPhysicsSystem(System):
             if entity not in self.registered_entities:
                 self.physics_world.add_static_body(entity)
                 self.registered_entities.add(entity)
+                # logger.debug(f"Registered static body for Entity {entity.id}")
         
         # Cleanup destroyed entities
         # (Simplified: assume PhysicsWorld handles cleanup or we don't need to remove static bodies often)

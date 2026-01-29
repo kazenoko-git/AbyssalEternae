@@ -3,7 +3,9 @@
 from enum import Enum
 from typing import Dict
 import numpy as np
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Emotion(Enum):
     """Basic emotion types."""
@@ -53,6 +55,7 @@ class EmotionState:
 
         # Reduce neutral
         self.emotions[Emotion.NEUTRAL] = max(0.0, self.emotions[Emotion.NEUTRAL] - intensity * 0.5)
+        # logger.debug(f"Added emotion {emotion.name} (intensity={intensity:.2f})")
 
     def update(self, dt: float):
         """Update emotion decay."""
@@ -99,8 +102,11 @@ class EmotionState:
 
         if 'emotions' in data:
             for name, value in data['emotions'].items():
-                emotion = Emotion[name]
-                state.emotions[emotion] = value
+                try:
+                    emotion = Emotion[name]
+                    state.emotions[emotion] = value
+                except KeyError:
+                    logger.warning(f"Unknown emotion in data: {name}")
 
         if 'personality' in data:
             state.personality.update(data['personality'])

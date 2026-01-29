@@ -2,7 +2,9 @@
 
 from aurora_engine.ecs.component import Component
 import numpy as np
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class ColliderShape:
     """Base collider shape."""
@@ -68,3 +70,5 @@ class Collider(Component):
         # Callbacks
         self.on_collision_enter = None
         self.on_collision_exit = None
+        
+        # logger.debug(f"Collider created with shape {type(shape).__name__}")

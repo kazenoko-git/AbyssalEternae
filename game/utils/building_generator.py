@@ -3,6 +3,9 @@
 import numpy as np
 from aurora_engine.rendering.mesh import Mesh
 import random
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 def create_procedural_house_mesh(seed: int, scale: float = 1.0) -> Mesh:
     """

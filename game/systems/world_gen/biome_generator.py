@@ -1,6 +1,9 @@
 # game/systems/world_gen/biome_generator.py
 
 from game.utils.terrain import perlin_noise_2d
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
 
 class BiomeGenerator:
     """
@@ -9,6 +12,7 @@ class BiomeGenerator:
 
     def __init__(self, seed: int):
         self.seed = seed
+        # logger.debug(f"BiomeGenerator initialized with seed {seed}")
 
     def get_biome_data(self, x: float, y: float) -> dict:
         """

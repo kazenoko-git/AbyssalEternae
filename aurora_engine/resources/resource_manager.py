@@ -5,7 +5,9 @@ from typing import Dict, Any
 import threading
 import os
 from aurora_engine.resources.asset_loader import AssetLoader
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class ResourceManager:
     """
@@ -18,6 +20,7 @@ class ResourceManager:
 
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.loading_queue = []
+        # logger.debug(f"ResourceManager initialized with {max_workers} workers")
 
     def load_async(self, path: str, callback=None):
         """Load resource asynchronously."""
@@ -43,8 +46,12 @@ class ResourceManager:
         resource = self._load_from_disk(path)
 
         # Cache it
-        with self.cache_lock:
-            self.cache[path] = resource
+        if resource:
+            with self.cache_lock:
+                self.cache[path] = resource
+            # logger.debug(f"Loaded and cached resource: {path}")
+        else:
+            logger.warning(f"Failed to load resource: {path}")
 
         return resource
 

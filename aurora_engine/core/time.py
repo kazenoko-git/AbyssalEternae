@@ -1,7 +1,9 @@
 # aurora_engine/core/time.py
 
 import time
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class TimeManager:
     """
@@ -26,6 +28,8 @@ class TimeManager:
         self._fps_samples = []
         self._fps_sample_count = 60
         self.fps = 0.0
+        
+        logger.info(f"TimeManager initialized with fixed_timestep={fixed_timestep}")
 
     def tick(self) -> float:
         """

@@ -7,6 +7,7 @@ from aurora_engine.camera.camera import Camera
 from aurora_engine.ecs.world import World
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
+from aurora_engine.core.logging import get_logger
 from panda3d.core import Vec4
 
 
@@ -18,6 +19,7 @@ class Renderer:
 
     def __init__(self, config: dict):
         self.config = config
+        self.logger = get_logger()
 
         # Rendering backend
         self.backend = PandaBackend(config)
@@ -28,9 +30,12 @@ class Renderer:
         # Active cameras
         self.cameras: List[Camera] = []
         self.main_camera: Camera = None
+        
+        self.logger.info("Renderer initialized")
 
     def initialize(self):
         """Initialize rendering system."""
+        self.logger.debug("Initializing PandaBackend")
         self.backend.initialize()
         
         # Enable Auto Shader for shadows and normal mapping
@@ -60,6 +65,7 @@ class Renderer:
         # Set as main camera if none exists
         if not self.main_camera:
             self.main_camera = camera
+            self.logger.info("Main camera registered")
 
     def begin_frame(self):
         """Begin rendering a frame."""
@@ -116,7 +122,7 @@ class Renderer:
                     # For placeholder, we might need to handle missing files
                     mesh_renderer._node_path = self.backend.base.loader.loadModel(mesh_renderer.model_path)
                 except Exception as e:
-                    print(f"Failed to load model {mesh_renderer.model_path}: {e}")
+                    self.logger.warning(f"Failed to load model {mesh_renderer.model_path}: {e}")
                     # Fallback to cube
                     from aurora_engine.rendering.mesh import create_cube_mesh
                     mesh_renderer._node_path = self.backend.create_mesh_node(create_cube_mesh())
@@ -155,3 +161,4 @@ class Renderer:
     def shutdown(self):
         """Clean shutdown."""
         self.backend.shutdown()
+        self.logger.info("Renderer shutdown")

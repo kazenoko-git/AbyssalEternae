@@ -4,7 +4,9 @@ import numpy as np
 from typing import List, Optional, Tuple
 from aurora_engine.ecs.component import Component
 from aurora_engine.rendering.material import Material
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Mesh:
     """
@@ -30,6 +32,8 @@ class Mesh:
 
         # Backend handle (Panda3D geometry)
         self._backend_handle = None
+        
+        # logger.debug(f"Mesh '{name}' created")
 
     def calculate_bounds(self):
         """Calculate bounding box from vertices."""
@@ -92,12 +96,15 @@ class MeshRenderer(Component):
         self.cast_shadows = True
         self.receive_shadows = True
         self.visible = True
+        
+        # logger.debug("MeshRenderer component created")
 
     def on_destroy(self):
         """Clean up Panda3D node when component is destroyed."""
         if self._node_path:
             self._node_path.removeNode()
             self._node_path = None
+            # logger.debug("MeshRenderer node removed")
 
 
 # Primitive mesh generators

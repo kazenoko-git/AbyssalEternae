@@ -3,7 +3,9 @@
 from abc import ABC, abstractmethod
 from typing import List, Type
 from aurora_engine.ecs.component import Component
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class System(ABC):
     """
@@ -14,6 +16,7 @@ class System(ABC):
     def __init__(self):
         self.priority = 0  # Lower numbers run first
         self.enabled = True
+        # logger.debug(f"System {self.__class__.__name__} initialized")
 
     @abstractmethod
     def get_required_components(self) -> List[Type[Component]]:

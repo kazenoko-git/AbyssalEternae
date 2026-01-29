@@ -5,7 +5,9 @@ from typing import List, Set
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.scene.scene_loader import SceneLoader
+from aurora_engine.core.logging import get_logger
 
+logger = get_logger()
 
 class Chunk:
     """
@@ -62,6 +64,7 @@ class Chunk:
             return
 
         self.loading = True
+        # logger.debug(f"Loading chunk ({self.x}, {self.y}, {self.z})")
 
         # Load chunk data from database if available
         if self.db_manager:
@@ -81,6 +84,8 @@ class Chunk:
         """Unload chunk data."""
         if not self.loaded:
             return
+
+        # logger.debug(f"Unloading chunk ({self.x}, {self.y}, {self.z})")
 
         # Save chunk state to database
         if self.db_manager:

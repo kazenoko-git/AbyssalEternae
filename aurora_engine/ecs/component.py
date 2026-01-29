@@ -1,5 +1,9 @@
 # aurora_engine/ecs/component.py
 
+from aurora_engine.core.logging import get_logger
+
+logger = get_logger()
+
 class Component:
     """
     Base class for all components.
