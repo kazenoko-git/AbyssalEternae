@@ -3,7 +3,8 @@
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
 from aurora_engine.scene.transform import Transform
-from aurora_engine.utils.math import quaternion_from_euler, matrix_to_quaternion
+from aurora_engine.utils.math import matrix_to_quaternion
+from aurora_engine.input.input_manager import InputManager
 
 
 class ThirdPersonController(CameraController):
@@ -12,10 +13,11 @@ class ThirdPersonController(CameraController):
     Follows a target with offset, smoothing, and collision.
     """
 
-    def __init__(self, camera, target: Transform):
+    def __init__(self, camera, target: Transform, input_manager: InputManager):
         super().__init__(camera)
 
         self.target = target
+        self.input_manager = input_manager
 
         # Offset from target
         self.offset = np.array([0.0, -5.0, 2.0], dtype=np.float32)
@@ -42,6 +44,11 @@ class ThirdPersonController(CameraController):
         """Update camera to follow target smoothly."""
         if not self.enabled or not self.target:
             return
+            
+        # Handle Mouse Input
+        mouse_delta = self.input_manager.get_mouse_delta()
+        if mouse_delta[0] != 0 or mouse_delta[1] != 0:
+            self.rotate(mouse_delta[0] * 100.0, -mouse_delta[1] * 100.0) # Invert Y
 
         # Calculate desired position
         target_pos = self.target.get_world_position()
@@ -67,18 +74,11 @@ class ThirdPersonController(CameraController):
             direction = direction / np.linalg.norm(direction)
             
             # Create look-at rotation
-            # Z-up coordinate system:
-            # Forward = direction
-            # Up = Z (0,0,1)
-            # Right = Cross(Forward, Up)
-            # Re-orthogonalize Up = Cross(Right, Forward)
-            
             forward = direction
             up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
             
-            # Handle case where forward is parallel to up
             if abs(np.dot(forward, up)) > 0.99:
-                up = np.array([0.0, 1.0, 0.0], dtype=np.float32) # Fallback up
+                up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
                 
             right = np.cross(forward, up)
             right = right / np.linalg.norm(right)
@@ -86,26 +86,11 @@ class ThirdPersonController(CameraController):
             up = np.cross(right, forward)
             up = up / np.linalg.norm(up)
             
-            # Create rotation matrix (Column-Major for our engine math)
-            # [Right, Up, -Forward] (OpenGL convention is -Z forward)
-            # Panda3D uses Y-forward.
-            # If we want camera to look along Y+, then Forward is Y.
-            # So matrix columns should be: [Right, Forward, Up] ?
-            # Let's stick to standard math:
-            # If we want to look at 'target', the camera's local Y axis should point to 'target'.
-            # Local X is Right. Local Z is Up.
-            
-            # Matrix columns:
-            # Col 0: Right (X)
-            # Col 1: Forward (Y) -> This is our 'direction' vector
-            # Col 2: Up (Z)
-            
             rot_mat = np.eye(3, dtype=np.float32)
             rot_mat[:, 0] = right
-            rot_mat[:, 1] = forward # Y is forward
+            rot_mat[:, 1] = forward
             rot_mat[:, 2] = up
             
-            # Convert to quaternion
             quat = matrix_to_quaternion(rot_mat)
             self.camera.transform.local_rotation = quat
 
@@ -122,11 +107,6 @@ class ThirdPersonController(CameraController):
         pitch_rad = np.radians(pitch)
 
         # Create rotation matrix
-        # Z-up coordinate system (Panda3D)
-        # Yaw rotates around Z
-        # Pitch rotates around X (local)
-        
-        # Rotation around Z (Yaw)
         cy = np.cos(yaw_rad)
         sy = np.sin(yaw_rad)
         rot_z = np.array([
@@ -135,7 +115,6 @@ class ThirdPersonController(CameraController):
             [0, 0, 1]
         ])
         
-        # Rotation around X (Pitch)
         cp = np.cos(pitch_rad)
         sp = np.sin(pitch_rad)
         rot_x = np.array([
@@ -144,7 +123,6 @@ class ThirdPersonController(CameraController):
             [0, sp, cp]
         ])
         
-        # Combined rotation: R = Rz * Rx
         rot = np.dot(rot_z, rot_x)
         
         return np.dot(rot, offset)

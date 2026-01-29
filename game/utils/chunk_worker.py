@@ -2,10 +2,11 @@
 
 import json
 import numpy as np
+import os
 from game.utils.terrain import create_terrain_mesh_from_heightmap
 from game.utils.tree_generator import create_procedural_tree_mesh
 from game.utils.rock_generator import create_procedural_rock_mesh
-from game.world_gen.structure_generator import StructureSelector
+from game.world_gen.structure_generator import StructureGenerator
 
 def generate_chunk_meshes(region_data):
     """
@@ -46,12 +47,11 @@ def generate_chunk_meshes(region_data):
                 mesh = create_procedural_tree_mesh(seed, height=4.0 * scale, radius=0.5 * scale, tree_type=tree_type)
         
         elif entity_data.get('type') == 'structure':
-            # Use Model Path
+            # Generate procedural building
             style = entity_data.get('style', 'Village')
-            model_path = StructureSelector.get_structure_model(seed, style=style)
-            entity_data['model_path'] = model_path
-            # Mesh is None, main thread will load model
+            mesh = StructureGenerator.generate_building(seed, style=style)
             
-        result['props'].append((entity_data, mesh))
+        if mesh:
+            result['props'].append((entity_data, mesh))
             
     return result

@@ -65,15 +65,16 @@ class ActionMap:
         if device == InputDevice.KEYBOARD:
             # Panda3D KeyboardButton
             try:
-                btn = KeyboardButton.ascii_key(key) if len(key) == 1 else getattr(KeyboardButton, key, None)
+                if len(key) == 1:
+                    btn = KeyboardButton.ascii_key(key)
+                else:
+                    # Handle special keys like "space", "shift", etc.
+                    attr = getattr(KeyboardButton, key, None)
+                    if callable(attr):
+                        btn = attr() # Call the method to get the handle
+                    else:
+                        btn = attr
             except AttributeError:
-                pass
-                
-            # Fallback for special keys if not found in KeyboardButton directly or if string
-            if btn is None:
-                # Try to find it by name
-                # This is tricky without a full map.
-                # For now, assume simple ascii or common names.
                 pass
 
         elif device == InputDevice.MOUSE:

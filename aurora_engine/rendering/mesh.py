@@ -78,12 +78,13 @@ class MeshRenderer(Component):
     Renders a mesh with a material.
     """
 
-    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None, color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)):
+    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None, color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0), model_path: Optional[str] = None):
         super().__init__()
 
         self.mesh = mesh
         self.material = material
         self.color = color # Simple color override if no material
+        self.model_path = model_path
         self.alpha = 1.0 # For fade-in effects
         self._node_path = None # Handle to Panda3D node
 
@@ -287,4 +288,105 @@ def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
 
     mesh.calculate_bounds()
 
+    return mesh
+
+def create_capsule_mesh(radius: float = 0.5, height: float = 1.0, segments: int = 16, rings: int = 8) -> Mesh:
+    """Create a capsule mesh (cylinder with hemispherical caps)."""
+    mesh = Mesh("Capsule")
+    
+    vertices = []
+    normals = []
+    uvs = []
+    indices = []
+    
+    # Cylinder height is the straight part. Total height = height + 2*radius.
+    # Let's assume 'height' is the total height.
+    cyl_height = max(0, height - 2 * radius)
+    half_cyl = cyl_height / 2.0
+    
+    # Top Hemisphere
+    for ring in range(rings + 1):
+        phi = ring * (np.pi / 2) / rings # 0 to pi/2
+        sin_phi = np.sin(phi)
+        cos_phi = np.cos(phi)
+        
+        for seg in range(segments + 1):
+            theta = seg * 2.0 * np.pi / segments
+            sin_theta = np.sin(theta)
+            cos_theta = np.cos(theta)
+            
+            x = sin_phi * cos_theta * radius
+            y = sin_phi * sin_theta * radius
+            z = cos_phi * radius + half_cyl
+            
+            vertices.append([x, y, z])
+            normals.append([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi])
+            uvs.append([seg / segments, ring / (rings * 2 + 1)]) # Approx UV
+            
+    # Bottom Hemisphere
+    offset_idx = len(vertices)
+    for ring in range(rings + 1):
+        phi = (np.pi / 2) + ring * (np.pi / 2) / rings # pi/2 to pi
+        sin_phi = np.sin(phi)
+        cos_phi = np.cos(phi)
+        
+        for seg in range(segments + 1):
+            theta = seg * 2.0 * np.pi / segments
+            sin_theta = np.sin(theta)
+            cos_theta = np.cos(theta)
+            
+            x = sin_phi * cos_theta * radius
+            y = sin_phi * sin_theta * radius
+            z = cos_phi * radius - half_cyl
+            
+            vertices.append([x, y, z])
+            normals.append([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi])
+            uvs.append([seg / segments, 0.5 + ring / (rings * 2 + 1)])
+            
+    # Indices (similar to sphere but split)
+    # Top Cap
+    for ring in range(rings):
+        for seg in range(segments):
+            curr = ring * (segments + 1) + seg
+            next_seg = curr + 1
+            next_ring = curr + (segments + 1)
+            next_both = next_ring + 1
+            
+            indices.extend([curr, next_ring, next_seg])
+            indices.extend([next_seg, next_ring, next_both])
+            
+    # Bottom Cap
+    for ring in range(rings):
+        for seg in range(segments):
+            curr = offset_idx + ring * (segments + 1) + seg
+            next_seg = curr + 1
+            next_ring = curr + (segments + 1)
+            next_both = next_ring + 1
+            
+            indices.extend([curr, next_ring, next_seg])
+            indices.extend([next_seg, next_ring, next_both])
+            
+    # Cylinder Body (Connect bottom of top cap to top of bottom cap)
+    # Top cap bottom ring is at index: rings * (segments + 1)
+    # Bottom cap top ring is at index: offset_idx
+    top_ring_start = rings * (segments + 1)
+    bottom_ring_start = offset_idx
+    
+    for seg in range(segments):
+        t1 = top_ring_start + seg
+        t2 = top_ring_start + seg + 1
+        b1 = bottom_ring_start + seg
+        b2 = bottom_ring_start + seg + 1
+        
+        # Quad: t1, b1, b2, t2
+        # CCW: t1 -> b1 -> t2, t2 -> b1 -> b2
+        indices.extend([t1, b1, t2])
+        indices.extend([t2, b1, b2])
+        
+    mesh.vertices = np.array(vertices, dtype=np.float32)
+    mesh.normals = np.array(normals, dtype=np.float32)
+    mesh.uvs = np.array(uvs, dtype=np.float32)
+    mesh.indices = np.array(indices, dtype=np.uint32)
+    
+    mesh.calculate_bounds()
     return mesh

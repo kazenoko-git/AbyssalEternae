@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 import numpy as np
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.physics.rigidbody import RigidBody
-from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider, HeightfieldCollider, MeshCollider
+from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider, HeightfieldCollider, MeshCollider, CapsuleCollider
 from aurora_engine.scene.transform import Transform
 
 
@@ -72,7 +72,7 @@ class PhysicsWorld:
             from panda3d.core import Quat, Point3
             p_quat = Quat(rot[3], rot[0], rot[1], rot[2])
             p_pos = Point3(pos[0], pos[1], pos[2])
-            node.setTransform(TransformState.makePosQuat(p_pos, p_quat))
+            node.setTransform(TransformState.make_pos_quat(p_pos, p_quat))
             
         # Add to world
         self._bullet_world.attachRigidBody(node)
@@ -132,7 +132,7 @@ class PhysicsWorld:
 
     def _create_bullet_shape(self, collider: Collider):
         """Create Bullet collision shape from Collider component."""
-        from panda3d.bullet import BulletBoxShape, BulletSphereShape, BulletHeightfieldShape, BulletTriangleMeshShape, BulletTriangleMesh, BulletConvexHullShape
+        from panda3d.bullet import BulletBoxShape, BulletSphereShape, BulletCapsuleShape, BulletHeightfieldShape, BulletTriangleMeshShape, BulletTriangleMesh, BulletConvexHullShape
         from panda3d.core import Vec3, PNMImage
         
         if isinstance(collider.shape, BoxCollider):
@@ -142,15 +142,19 @@ class PhysicsWorld:
             
         elif isinstance(collider.shape, SphereCollider):
             return BulletSphereShape(collider.shape.radius)
+
+        elif isinstance(collider.shape, CapsuleCollider):
+            # BulletCapsuleShape(radius, height, upAxis)
+            # height is the cylindrical part height
+            # Our CapsuleCollider height is total height?
+            # Let's assume total height for consistency with mesh gen
+            cyl_height = max(0.0, collider.shape.height - 2 * collider.shape.radius)
+            return BulletCapsuleShape(collider.shape.radius, cyl_height, 2) # Z-up
             
         elif isinstance(collider.shape, HeightfieldCollider):
             # Create heightfield from numpy array
             heightmap = collider.shape.heightmap
             rows, cols = heightmap.shape
-            
-            # Bullet expects a PNMImage or raw data.
-            # For simplicity, let's use the raw float array if possible, or construct a PNMImage.
-            # BulletHeightfieldShape(PNMImage image, float max_height, ZUp)
             
             # Normalize heightmap to 0..1 for image, then scale
             min_h = np.min(heightmap)

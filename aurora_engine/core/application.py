@@ -10,6 +10,7 @@ from aurora_engine.ecs.world import World
 from aurora_engine.input.input_manager import InputManager
 from aurora_engine.rendering.renderer import Renderer
 from aurora_engine.physics.physics_world import PhysicsWorld
+from aurora_engine.physics.physics_system import PhysicsSystem
 from aurora_engine.ui.ui_manager import UIManager
 
 
@@ -78,6 +79,7 @@ class Application(ABC):
             alpha = accumulator / self.time.fixed_delta
             try:
                 self.update(frame_time, alpha)
+                self.late_update(frame_time, alpha) # Added late_update
                 self.render(alpha)
             except Exception as e:
                 self.logger.error(f"Update/render failed: {e}", exc_info=True)
@@ -92,6 +94,10 @@ class Application(ABC):
             self.renderer.initialize()
             self.physics.initialize()
             self.ui.initialize()
+            
+            # Register Physics System
+            self.world.add_system(PhysicsSystem(self.physics))
+            
             self.initialize_game()
         except Exception as e:
             self.logger.critical(f"Initialization failed: {e}", exc_info=True)
@@ -111,6 +117,10 @@ class Application(ABC):
         """Variable timestep update (input, AI, etc.)."""
         self.input.update(dt)
         self.ui.update(dt)
+        
+    def late_update(self, dt: float, alpha: float):
+        """Called after update, useful for camera."""
+        pass
 
     def render(self, alpha: float):
         """Render with interpolation."""

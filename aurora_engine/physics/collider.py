@@ -22,6 +22,12 @@ class SphereCollider(ColliderShape):
     def __init__(self, radius: float):
         self.radius = radius
 
+class CapsuleCollider(ColliderShape):
+    """Capsule-shaped collider, aligned along Z-axis."""
+    def __init__(self, radius: float, height: float):
+        self.radius = radius
+        self.height = height
+
 
 class HeightfieldCollider(ColliderShape):
     """

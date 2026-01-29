@@ -5,6 +5,10 @@
     "title": "Rifted"
   },
   "database": {
-    "path": "game.db"
+    "host": "localhost",
+    "user": "root",
+    "password": "CeneX_1234",
+    "database": "rifted_db",
+    "port": 3306
   }
 }
