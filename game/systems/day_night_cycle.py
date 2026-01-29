@@ -31,14 +31,25 @@ class DayNightCycle(System):
     def _setup_lights(self):
         # Sun Light
         dlight = DirectionalLight('sun_light')
+        dlight.setShadowCaster(True, 2048, 2048) # Enable Shadows
+        # Adjust shadow lens to cover visible area
+        lens = dlight.getLens()
+        lens.setFilmSize(200, 200) # Cover 200x200 area around camera
+        lens.setNearFar(10, 1000)
+        
         self.sun_light_node = self.renderer.backend.scene_graph.attachNewNode(dlight)
         self.renderer.backend.scene_graph.setLight(self.sun_light_node)
         
         # Moon Light
         mlight = DirectionalLight('moon_light')
         mlight.setColor(Vec4(0.2, 0.2, 0.3, 1))
+        mlight.setShadowCaster(True, 1024, 1024) # Enable Shadows (lower res for night)
+        lens = mlight.getLens()
+        lens.setFilmSize(200, 200)
+        lens.setNearFar(10, 1000)
+
         self.moon_light_node = self.renderer.backend.scene_graph.attachNewNode(mlight)
-        # Don't set light yet, only at night
+        self.renderer.backend.scene_graph.setLight(self.moon_light_node)
         
         # Ambient Light
         alight = AmbientLight('ambient_light')
@@ -64,11 +75,20 @@ class DayNightCycle(System):
         self.sun_colors = {
             0.0: Vec4(1.0, 1.0, 0.9, 1),
             0.20: Vec4(1.0, 0.8, 0.6, 1),
-            0.30: Vec4(0,0,0,1),
+            0.30: Vec4(0,0,0,1), # Fade to black
             0.5: Vec4(0,0,0,1),
             0.70: Vec4(0,0,0,1),
             0.80: Vec4(1.0, 0.8, 0.6, 1),
             1.0: Vec4(1.0, 1.0, 0.9, 1)
+        }
+        self.moon_colors = {
+            0.0: Vec4(0,0,0,1),
+            0.20: Vec4(0,0,0,1),
+            0.30: Vec4(0.1, 0.1, 0.2, 1), # Fade in
+            0.5: Vec4(0.2, 0.2, 0.3, 1),  # Full moon light
+            0.70: Vec4(0.1, 0.1, 0.2, 1),
+            0.80: Vec4(0,0,0,1),
+            1.0: Vec4(0,0,0,1)
         }
         self.ambient_colors = {
             0.0: Vec4(0.4, 0.4, 0.4, 1),
@@ -87,10 +107,11 @@ class DayNightCycle(System):
         self.time = (self.time + dt / self.day_duration) % 1.0
         
         angle = self.time * 2 * math.pi
+        radius = 100.0
         
-        sun_y = 0
-        sun_x = math.sin(angle) * 100.0
-        sun_z = math.cos(angle) * 100.0
+        sun_x = -math.sin(angle) * radius
+        sun_z = math.cos(angle) * radius
+        sun_y = 0 
         
         if self.sun_entity:
             t = self.sun_entity.get_component(Transform)
@@ -101,11 +122,13 @@ class DayNightCycle(System):
         
         moon_x = -sun_x
         moon_z = -sun_z
+        moon_y = -sun_y
+        
         if self.moon_entity:
             t = self.moon_entity.get_component(Transform)
-            t.set_world_position(np.array([moon_x, sun_y, moon_z], dtype=np.float32))
+            t.set_world_position(np.array([moon_x, moon_y, moon_z], dtype=np.float32))
             
-        self.moon_light_node.setPos(moon_x, sun_y, moon_z)
+        self.moon_light_node.setPos(moon_x, moon_y, moon_z)
         self.moon_light_node.lookAt(0, 0, 0)
         
         self._update_colors(sun_z)
@@ -133,17 +156,12 @@ class DayNightCycle(System):
     def _update_colors(self, sun_height):
         sky_color = self._interpolate_color(self.sky_colors, self.time)
         sun_color = self._interpolate_color(self.sun_colors, self.time)
+        moon_color = self._interpolate_color(self.moon_colors, self.time)
         ambient = self._interpolate_color(self.ambient_colors, self.time)
         
-        if sun_height > 0: # Day
-            self.renderer.backend.scene_graph.setLight(self.sun_light_node)
-            self.renderer.backend.scene_graph.clearLight(self.moon_light_node)
-        else: # Night
-            self.renderer.backend.scene_graph.clearLight(self.sun_light_node)
-            self.renderer.backend.scene_graph.setLight(self.moon_light_node)
-            
-        # Apply
+        # Apply colors (no more switching lights on/off)
         self.renderer.backend.base.setBackgroundColor(sky_color)
         self.fog.setColor(sky_color)
         self.sun_light_node.node().setColor(sun_color)
+        self.moon_light_node.node().setColor(moon_color)
         self.ambient_light_node.node().setColor(ambient)

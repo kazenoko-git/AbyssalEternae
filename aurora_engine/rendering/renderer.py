@@ -32,6 +32,10 @@ class Renderer:
     def initialize(self):
         """Initialize rendering system."""
         self.backend.initialize()
+        
+        # Enable Auto Shader for shadows and normal mapping
+        self.backend.scene_graph.setShaderAuto()
+
         self._setup_cel_shading_pipeline()
 
     def _setup_cel_shading_pipeline(self):

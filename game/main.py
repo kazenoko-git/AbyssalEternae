@@ -15,7 +15,7 @@ from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.utils.chunk_worker import generate_chunk_meshes
 from game.utils.terrain import get_height_at_world_pos
-from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider, CapsuleCollider
+from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider
 from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 import numpy as np
 import json
@@ -70,7 +70,7 @@ class Rifted(Application):
         self.player.add_component(MeshRenderer(mesh=player_mesh, color=(0.2, 0.4, 0.8, 1.0)))
         
         # Add player physics
-        self.player.add_component(Collider(CapsuleCollider(radius=0.5, height=2.0)))
+        self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))
         rb = self.player.add_component(RigidBody())
         rb.mass = 80.0 # Standard human mass
         rb.use_gravity = True
@@ -92,7 +92,16 @@ class Rifted(Application):
         # Add game systems
         self.world.add_system(PlayerSystem(self.input))
         self.world.add_system(FadeInSystem())
-        self.world.add_system(DayNightCycle(self.renderer))
+        
+        # Pass player transform to DayNightCycle for shadow following
+        day_night = DayNightCycle(self.renderer)
+        # We need to manually set the target since DayNightCycle doesn't take it in init
+        # Or modify DayNightCycle to accept it.
+        # Let's modify DayNightCycle to look for a 'target' attribute or just use main camera position if available.
+        # But DayNightCycle is a System, it doesn't easily access the camera unless passed.
+        # Let's just pass the player transform to it.
+        day_night.target = player_transform
+        self.world.add_system(day_night)
         
         dialogue_system = DialogueSystem(self.ui)
         dialogue_system.ai_generator = self.ai_generator
@@ -236,10 +245,10 @@ class Rifted(Application):
 
     def _load_game_world(self):
         """Load the main game world."""
-        # Use a fixed seed for the main world or load from save
-        seed = 123456789 
+        # Use a random seed for the main world
+        seed = int(time.time())
         dim = self.world_generator.get_or_create_dimension("dim_main", seed)
-        print(f"Entered Dimension: {dim['name']}")
+        print(f"Entered Dimension: {dim['name']} (Seed: {seed})")
         
         # Initial Load (Synchronous)
         print("Loading initial area...")
@@ -289,6 +298,9 @@ class Rifted(Application):
             elif entity_data['type'] == 'structure':
                 e.add_component(Collider(BoxCollider(np.array([4.0, 3.0, 3.0], dtype=np.float32))))
             
+            # Add StaticBody for props/structures
+            e.add_component(StaticBody())
+            
             chunk_entities.append(e)
                 
         # Terrain
@@ -321,6 +333,9 @@ class Rifted(Application):
         water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
         water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
         if fade_in: water.add_component(FadeInEffect(duration=1.5))
+        
+        # Add StaticBody for water
+        water.add_component(StaticBody())
         
         chunk_entities.append(water)
         
