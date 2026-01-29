@@ -12,7 +12,7 @@ class System(ABC):
     """
 
     def __init__(self):
-        self.priority = 0  # Update order
+        self.priority = 0  # Lower numbers run first
         self.enabled = True
 
     @abstractmethod

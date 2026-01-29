@@ -15,7 +15,7 @@ from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.utils.chunk_worker import generate_chunk_meshes
 from game.utils.terrain import get_height_at_world_pos
-from aurora_engine.physics.collider import MeshCollider, BoxCollider, CapsuleCollider, Collider
+from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider, CapsuleCollider
 from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 import numpy as np
 import json
@@ -74,6 +74,7 @@ class Rifted(Application):
         rb = self.player.add_component(RigidBody())
         rb.mass = 80.0 # Standard human mass
         rb.use_gravity = True
+        rb.lock_rotation = True # Prevent rolling
 
         # Add player-specific components
         from game.components.player import PlayerController
@@ -235,10 +236,10 @@ class Rifted(Application):
 
     def _load_game_world(self):
         """Load the main game world."""
-        # Use a random seed for the main world
-        seed = int(time.time())
+        # Use a fixed seed for the main world or load from save
+        seed = 123456789 
         dim = self.world_generator.get_or_create_dimension("dim_main", seed)
-        print(f"Entered Dimension: {dim['name']} (Seed: {seed})")
+        print(f"Entered Dimension: {dim['name']}")
         
         # Initial Load (Synchronous)
         print("Loading initial area...")

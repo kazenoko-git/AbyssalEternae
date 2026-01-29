@@ -22,6 +22,7 @@ class RigidBody(Component):
 
         self.kinematic = False  # If true, not affected by forces
         self.use_gravity = True
+        self.lock_rotation = False # If true, locks rotation on X/Y axes
 
         # Physics backend handle (Panda3D BulletRigidBodyNode)
         self._bullet_body = None

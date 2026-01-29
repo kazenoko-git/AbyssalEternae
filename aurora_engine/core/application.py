@@ -10,7 +10,8 @@ from aurora_engine.ecs.world import World
 from aurora_engine.input.input_manager import InputManager
 from aurora_engine.rendering.renderer import Renderer
 from aurora_engine.physics.physics_world import PhysicsWorld
-from aurora_engine.physics.physics_system import PhysicsSystem
+from aurora_engine.physics.dynamic_physics_system import DynamicPhysicsSystem
+from aurora_engine.physics.static_physics_system import StaticPhysicsSystem
 from aurora_engine.ui.ui_manager import UIManager
 
 
@@ -98,8 +99,9 @@ class Application(ABC):
             # Initialize Input with Backend
             self.input.initialize(self.renderer.backend)
             
-            # Register Physics System
-            self.world.add_system(PhysicsSystem(self.physics))
+            # Register Physics Systems
+            self.world.add_system(DynamicPhysicsSystem(self.physics))
+            self.world.add_system(StaticPhysicsSystem(self.physics))
             
             self.initialize_game()
         except Exception as e:

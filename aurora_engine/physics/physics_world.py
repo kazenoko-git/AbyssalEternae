@@ -70,6 +70,10 @@ class PhysicsWorld:
             ts = TransformState.makePos(p_pos).compose(TransformState.makeQuat(p_quat))
             node.setTransform(ts)
             
+        # Lock rotation if needed
+        if body.lock_rotation:
+            node.setAngularFactor(Vec3(0, 0, 1)) # Allow Z rotation only
+            
         # Add to world
         self._bullet_world.attachRigidBody(node)
         body._bullet_body = node

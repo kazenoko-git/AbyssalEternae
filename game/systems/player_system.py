@@ -18,6 +18,7 @@ class PlayerSystem(System):
     def __init__(self, input_manager: InputManager):
         super().__init__()
         self.input_manager = input_manager
+        self.priority = -10 # Run before physics
 
     def get_required_components(self):
         return [Transform, PlayerController, RigidBody]
@@ -59,7 +60,9 @@ class PlayerSystem(System):
             # Jump
             if jump and abs(current_vel[2]) < 0.1: # Simple ground check
                  new_vel[2] = controller.jump_force
-                 
+            
+            # Only set if changed or moving to ensure we don't override physics unnecessarily
+            # But we need to override X/Y friction
             rigidbody.set_velocity(new_vel)
             
             # Rotate player to face movement direction
