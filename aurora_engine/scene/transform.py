@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, List
 from aurora_engine.utils.math import quaternion_to_matrix, quaternion_multiply, quaternion_slerp
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -134,26 +135,27 @@ class Transform:
 
     def _update_world_transform(self):
         """Recalculate world transform from local transform and parent."""
-        local_matrix = self._compute_trs_matrix(self.local_position, self.local_rotation, self.local_scale)
+        with profile_section("TransformUpdate"):
+            local_matrix = self._compute_trs_matrix(self.local_position, self.local_rotation, self.local_scale)
 
-        if self.parent:
-            self._world_matrix = self.parent.get_world_matrix() @ local_matrix
-        else:
-            self._world_matrix = local_matrix
+            if self.parent:
+                self._world_matrix = self.parent.get_world_matrix() @ local_matrix
+            else:
+                self._world_matrix = local_matrix
 
-        # Decompose world matrix to get world TRS properties
-        self._world_position = self._world_matrix[:3, 3]
+            # Decompose world matrix to get world TRS properties
+            self._world_position = self._world_matrix[:3, 3]
 
-        m3x3 = self._world_matrix[:3, :3]
-        self._world_scale = np.array([np.linalg.norm(m3x3[:, 0]), np.linalg.norm(m3x3[:, 1]), np.linalg.norm(m3x3[:, 2])])
+            m3x3 = self._world_matrix[:3, :3]
+            self._world_scale = np.array([np.linalg.norm(m3x3[:, 0]), np.linalg.norm(m3x3[:, 1]), np.linalg.norm(m3x3[:, 2])])
 
-        if np.any(self._world_scale == 0):
-            self._world_rotation = np.array([0.0, 0.0, 0.0, 1.0])
-        else:
-            rot_matrix = m3x3 / self._world_scale
-            self._world_rotation = matrix_to_quaternion(rot_matrix)
+            if np.any(self._world_scale == 0):
+                self._world_rotation = np.array([0.0, 0.0, 0.0, 1.0])
+            else:
+                rot_matrix = m3x3 / self._world_scale
+                self._world_rotation = matrix_to_quaternion(rot_matrix)
 
-        self._dirty = False
+            self._dirty = False
 
     def _mark_dirty(self):
         """Mark this transform and all children as needing update."""

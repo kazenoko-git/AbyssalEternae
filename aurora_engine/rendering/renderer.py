@@ -8,6 +8,7 @@ from aurora_engine.ecs.world import World
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 from panda3d.core import Vec4
 
 
@@ -73,20 +74,21 @@ class Renderer:
 
     def render_world(self, world: World):
         """Render all entities in the world."""
-        if not self.main_camera:
-            return
+        with profile_section("RenderWorld"):
+            if not self.main_camera:
+                return
 
-        # Set camera matrices
-        view_matrix = self.main_camera.get_view_matrix()
-        proj_matrix = self.main_camera.get_projection_matrix()
+            # Set camera matrices
+            view_matrix = self.main_camera.get_view_matrix()
+            proj_matrix = self.main_camera.get_projection_matrix()
 
-        self.backend.set_view_projection(view_matrix, proj_matrix)
+            self.backend.set_view_projection(view_matrix, proj_matrix)
 
-        # Execute render pipeline
-        self.pipeline.execute(self)
+            # Execute render pipeline
+            self.pipeline.execute(self)
 
-        # Render entities
-        self._render_entities(world)
+            # Render entities
+            self._render_entities(world)
 
     def _render_entities(self, world: World):
         """Render all entities with mesh components."""
@@ -104,9 +106,6 @@ class Renderer:
         transform = entity.get_component(Transform)
         if not transform:
             return
-
-        # Get world matrix
-        world_matrix = transform.get_world_matrix()
 
         # Ensure we have a NodePath for this entity
         # We store it on the MeshRenderer component for persistence
@@ -132,7 +131,12 @@ class Renderer:
         
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
             # Update transform
-            self.backend.update_mesh_node(mesh_renderer._node_path, world_matrix)
+            # Use decomposed values for faster update (avoiding matrix transpose in Python)
+            pos = transform.get_world_position()
+            rot = transform.get_world_rotation()
+            scale = transform.get_world_scale()
+            
+            self.backend.update_mesh_transform(mesh_renderer._node_path, pos, rot, scale)
             
             # Apply material or default color
             if mesh_renderer.material:

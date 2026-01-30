@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 from aurora_engine.ecs.component import Component
 from aurora_engine.rendering.material import Material
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -43,37 +44,37 @@ class Mesh:
 
     def calculate_normals(self):
         """Calculate smooth normals from geometry."""
-        if self.indices is None or len(self.indices) == 0:
-            return
+        with profile_section("CalcNormals"):
+            if self.indices is None or len(self.indices) == 0:
+                return
 
-        num_verts = len(self.vertices)
-        normals = np.zeros((num_verts, 3), dtype=np.float32)
+            num_verts = len(self.vertices)
+            normals = np.zeros((num_verts, 3), dtype=np.float32)
 
-        # Accumulate face normals
-        for i in range(0, len(self.indices), 3):
-            i0, i1, i2 = self.indices[i], self.indices[i + 1], self.indices[i + 2]
+            # Accumulate face normals
+            for i in range(0, len(self.indices), 3):
+                i0, i1, i2 = self.indices[i], self.indices[i + 1], self.indices[i + 2]
 
-            v0 = self.vertices[i0]
-            v1 = self.vertices[i1]
-            v2 = self.vertices[i2]
+                v0 = self.vertices[i0]
+                v1 = self.vertices[i1]
+                v2 = self.vertices[i2]
 
-            # Calculate face normal
-            edge1 = v1 - v0
-            edge2 = v2 - v0
-            face_normal = np.cross(edge1, edge2)
+                # Calculate face normal
+                edge1 = v1 - v0
+                edge2 = v2 - v0
+                face_normal = np.cross(edge1, edge2)
 
-            # Accumulate to vertices
-            normals[i0] += face_normal
-            normals[i1] += face_normal
-            normals[i2] += face_normal
+                # Accumulate to vertices
+                normals[i0] += face_normal
+                normals[i1] += face_normal
+                normals[i2] += face_normal
 
-        # Normalize
-        for i in range(num_verts):
-            length = np.linalg.norm(normals[i])
-            if length > 0:
-                normals[i] /= length
-
-        self.normals = normals
+            # Normalize
+            # Vectorized normalization for speed
+            norms = np.linalg.norm(normals, axis=1, keepdims=True)
+            # Avoid division by zero
+            norms[norms == 0] = 1.0
+            self.normals = normals / norms
 
 
 class MeshRenderer(Component):
@@ -91,6 +92,11 @@ class MeshRenderer(Component):
         self.model_path = model_path
         self.alpha = 1.0 # For fade-in effects
         self._node_path = None # Handle to Panda3D node
+
+        # Cache for transform optimization
+        self._last_pos = None
+        self._last_rot = None
+        self._last_scale = None
 
         # Rendering settings
         self.cast_shadows = True
@@ -202,7 +208,7 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
     return mesh
 
 
-def create_sphere_mesh(radius: float = 1.0, segments: int = 32, rings: int = 16) -> Mesh:
+def create_sphere_mesh(radius: float = 1.0, segments: int = 16, rings: int = 8) -> Mesh:
     """Create a UV sphere mesh."""
     mesh = Mesh("Sphere")
 
@@ -297,7 +303,7 @@ def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
 
     return mesh
 
-def create_capsule_mesh(radius: float = 0.5, height: float = 1.0, segments: int = 16, rings: int = 8) -> Mesh:
+def create_capsule_mesh(radius: float = 0.5, height: float = 1.0, segments: int = 12, rings: int = 6) -> Mesh:
     """Create a capsule mesh (cylinder with hemispherical caps)."""
     mesh = Mesh("Capsule")
     

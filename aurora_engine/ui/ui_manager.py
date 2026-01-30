@@ -5,6 +5,7 @@ import numpy as np
 from aurora_engine.ui.widget import Widget
 from aurora_engine.ui.theme import UITheme
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -65,19 +66,21 @@ class UIManager:
 
     def update(self, dt: float):
         """Update all UI widgets."""
-        # Update in layer order
-        for layer in ['background', 'game', 'hud', 'menu', 'overlay']:
-            for widget in self.layers[layer]:
-                widget.update(dt)
+        with profile_section("UIUpdate"):
+            # Update in layer order
+            for layer in ['background', 'game', 'hud', 'menu', 'overlay']:
+                for widget in self.layers[layer]:
+                    widget.update(dt)
 
-        # Process input
-        self._process_input()
+            # Process input
+            self._process_input()
 
     def render(self):
         """Render all UI widgets."""
-        for layer in ['background', 'game', 'hud', 'menu', 'overlay']:
-            for widget in self.layers[layer]:
-                widget.render()
+        with profile_section("UIRender"):
+            for layer in ['background', 'game', 'hud', 'menu', 'overlay']:
+                for widget in self.layers[layer]:
+                    widget.render()
 
     def _process_input(self):
         """Handle UI input (clicks, hovers)."""

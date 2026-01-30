@@ -5,6 +5,7 @@ from aurora_engine.physics.rigidbody import StaticBody
 from aurora_engine.physics.collider import Collider
 from aurora_engine.physics.physics_world import PhysicsWorld
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -24,13 +25,14 @@ class StaticPhysicsSystem(System):
         return [StaticBody, Collider]
 
     def update(self, entities, dt):
-        # Register new static entities
-        for entity in entities:
-            if entity not in self.registered_entities:
-                self.physics_world.add_static_body(entity)
-                self.registered_entities.add(entity)
-                # logger.debug(f"Registered static body for Entity {entity.id}")
-        
-        # Cleanup destroyed entities
-        # (Simplified: assume PhysicsWorld handles cleanup or we don't need to remove static bodies often)
-        pass
+        with profile_section("StaticPhysicsUpdate"):
+            # Register new static entities
+            for entity in entities:
+                if entity not in self.registered_entities:
+                    self.physics_world.add_static_body(entity)
+                    self.registered_entities.add(entity)
+                    # logger.debug(f"Registered static body for Entity {entity.id}")
+            
+            # Cleanup destroyed entities
+            # (Simplified: assume PhysicsWorld handles cleanup or we don't need to remove static bodies often)
+            pass

@@ -18,6 +18,6 @@ class CameraController(ABC):
         # logger.debug(f"{self.__class__.__name__} initialized")
 
     @abstractmethod
-    def update(self, dt: float):
+    def update(self, dt: float, alpha: float = 1.0):
         """Update camera transform."""
         pass

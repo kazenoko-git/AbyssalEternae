@@ -5,6 +5,7 @@ from aurora_engine.rendering.mesh import Mesh
 from typing import Tuple, Dict
 import json
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -165,73 +166,73 @@ def create_terrain_mesh_from_heightmap(heightmap: np.ndarray, cell_size: float =
     The heightmap is assumed to be a grid of (rows, cols) where each value is the height.
     The terrain will be generated on the XY plane, with Z as height.
     """
-    
-    rows, cols = heightmap.shape
-    mesh = Mesh("Terrain")
+    with profile_section("TerrainMeshGen"):
+        rows, cols = heightmap.shape
+        mesh = Mesh("Terrain")
 
-    vertices = []
-    normals = []
-    uvs = []
-    indices = []
-    colors = []
+        vertices = []
+        normals = []
+        uvs = []
+        indices = []
+        colors = []
 
-    # Generate vertices, UVs, and Colors
-    for r in range(rows):
-        for c in range(cols):
-            x = c * cell_size
-            y = r * cell_size
-            z = heightmap[r, c]
+        # Generate vertices, UVs, and Colors
+        for r in range(rows):
+            for c in range(cols):
+                x = c * cell_size
+                y = r * cell_size
+                z = heightmap[r, c]
 
-            vertices.append([x, y, z])
-            uvs.append([c / (cols - 1), r / (rows - 1)]) # Normalize UVs
-            
-            # Height-based coloring (Stylized)
-            # Normalize height roughly between -10 and 10 (based on generation scale)
-            # Assuming water level is around -2.0
-            
-            if z < -1.5:
-                # Deep Water / Sand edge
-                colors.append([0.76, 0.7, 0.5, 1.0]) # Sand
-            elif z < 2.0:
-                # Grass
-                colors.append([0.3, 0.7, 0.3, 1.0]) # Vibrant Green
-            elif z < 6.0:
-                # Forest / Darker Grass
-                colors.append([0.2, 0.5, 0.2, 1.0]) # Dark Green
-            elif z < 15.0:
-                # Rock / Mountain Base
-                colors.append([0.5, 0.5, 0.5, 1.0]) # Grey
-            else:
-                # Snow
-                colors.append([0.95, 0.95, 1.0, 1.0]) # White
+                vertices.append([x, y, z])
+                uvs.append([c / (cols - 1), r / (rows - 1)]) # Normalize UVs
+                
+                # Height-based coloring (Stylized)
+                # Normalize height roughly between -10 and 10 (based on generation scale)
+                # Assuming water level is around -2.0
+                
+                if z < -1.5:
+                    # Deep Water / Sand edge
+                    colors.append([0.76, 0.7, 0.5, 1.0]) # Sand
+                elif z < 2.0:
+                    # Grass
+                    colors.append([0.3, 0.7, 0.3, 1.0]) # Vibrant Green
+                elif z < 6.0:
+                    # Forest / Darker Grass
+                    colors.append([0.2, 0.5, 0.2, 1.0]) # Dark Green
+                elif z < 15.0:
+                    # Rock / Mountain Base
+                    colors.append([0.5, 0.5, 0.5, 1.0]) # Grey
+                else:
+                    # Snow
+                    colors.append([0.95, 0.95, 1.0, 1.0]) # White
 
-    # Generate indices (triangles for each quad)
-    # Each quad is formed by (r,c), (r+1,c), (r,c+1), (r+1,c+1)
-    for r in range(rows - 1):
-        for c in range(cols - 1):
-            # Vertices of the quad
-            v0 = r * cols + c          # Top-Left (x, y)
-            v1 = r * cols + (c + 1)    # Top-Right (x+1, y)
-            v2 = (r + 1) * cols + c    # Bottom-Left (x, y+1)
-            v3 = (r + 1) * cols + (c + 1) # Bottom-Right (x+1, y+1)
+        # Generate indices (triangles for each quad)
+        # Each quad is formed by (r,c), (r+1,c), (r,c+1), (r+1,c+1)
+        for r in range(rows - 1):
+            for c in range(cols - 1):
+                # Vertices of the quad
+                v0 = r * cols + c          # Top-Left (x, y)
+                v1 = r * cols + (c + 1)    # Top-Right (x+1, y)
+                v2 = (r + 1) * cols + c    # Bottom-Left (x, y+1)
+                v3 = (r + 1) * cols + (c + 1) # Bottom-Right (x+1, y+1)
 
-            # Fix Winding Order for +Z Normal (CCW)
-            # Tri 1: TL -> TR -> BL (v0 -> v1 -> v2)
-            indices.extend([v0, v1, v2])
-            
-            # Tri 2: TR -> BR -> BL (v1 -> v3 -> v2)
-            indices.extend([v1, v3, v2])
+                # Fix Winding Order for +Z Normal (CCW)
+                # Tri 1: TL -> TR -> BL (v0 -> v1 -> v2)
+                indices.extend([v0, v1, v2])
+                
+                # Tri 2: TR -> BR -> BL (v1 -> v3 -> v2)
+                indices.extend([v1, v3, v2])
 
-    mesh.vertices = np.array(vertices, dtype=np.float32)
-    mesh.uvs = np.array(uvs, dtype=np.float32)
-    mesh.indices = np.array(indices, dtype=np.uint32)
-    mesh.colors = np.array(colors, dtype=np.float32)
+        mesh.vertices = np.array(vertices, dtype=np.float32)
+        mesh.uvs = np.array(uvs, dtype=np.float32)
+        mesh.indices = np.array(indices, dtype=np.uint32)
+        mesh.colors = np.array(colors, dtype=np.float32)
 
-    # Calculate normals (after all vertices and indices are set)
-    mesh.calculate_normals()
-    mesh.calculate_bounds()
+        # Calculate normals (after all vertices and indices are set)
+        mesh.calculate_normals()
+        mesh.calculate_bounds()
 
-    return mesh
+        return mesh
 
 
 def get_height_at_world_pos(world_x: float, world_y: float, region_data: Dict, cell_size: float = 1.0) -> float:

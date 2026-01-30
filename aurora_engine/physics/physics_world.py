@@ -7,6 +7,7 @@ from aurora_engine.physics.rigidbody import RigidBody
 from aurora_engine.physics.collider import Collider, BoxCollider, SphereCollider, HeightfieldCollider, MeshCollider, CapsuleCollider
 from aurora_engine.scene.transform import Transform
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -132,11 +133,12 @@ class PhysicsWorld:
 
     def step(self, dt: float):
         """Step physics simulation."""
-        if self._bullet_world:
-            self._bullet_world.doPhysics(dt)
+        with profile_section("PhysicsStep"):
+            if self._bullet_world:
+                self._bullet_world.doPhysics(dt)
 
-        # Sync physics transforms back to ECS
-        self._sync_transforms()
+            # Sync physics transforms back to ECS
+            self._sync_transforms()
 
     def _sync_transforms(self):
         """Synchronize physics bodies with ECS transforms."""

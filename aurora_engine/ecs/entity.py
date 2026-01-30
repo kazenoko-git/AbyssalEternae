@@ -35,6 +35,8 @@ class Entity:
 
     def has_component(self, component_type: Type[Component]) -> bool:
         """Check if entity has a component."""
+        # Optimization: Check for subclasses if not found directly?
+        # For now, strict type matching is faster and simpler.
         return component_type in self.components
 
     def remove_component(self, component_type: Type[Component]):

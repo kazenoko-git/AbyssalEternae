@@ -5,6 +5,7 @@ from panda3d.core import *
 from aurora_engine.rendering.mesh import Mesh
 import weakref
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -60,7 +61,8 @@ class PandaBackend:
         # Panda3D handles this automatically
         # But we need to call taskMgr.step() somewhere if we are running our own loop.
         if self.base:
-            self.base.taskMgr.step()
+            with profile_section("PandaTaskStep"):
+                self.base.taskMgr.step()
 
     def set_view_projection(self, view: np.ndarray, projection: np.ndarray):
         """Set camera matrices."""
@@ -94,13 +96,25 @@ class PandaBackend:
         pass
 
     def update_mesh_node(self, node_path: NodePath, world_matrix: np.ndarray):
-        """Update transform of a node path."""
+        """Update transform of a node path using matrix."""
+        # Slow path
         mat = LMatrix4f()
         for i in range(4):
             for j in range(4):
                 # Transpose for Panda3D (Row-Major)
                 mat.setCell(j, i, world_matrix[i, j])
         node_path.setMat(mat)
+
+    def update_mesh_transform(self, node_path: NodePath, pos: np.ndarray, rot: np.ndarray, scale: np.ndarray):
+        """Update transform of a node path using decomposed values (Faster)."""
+        # pos: [x, y, z]
+        # rot: [x, y, z, w] (Quaternion)
+        # scale: [sx, sy, sz]
+        
+        node_path.setPos(pos[0], pos[1], pos[2])
+        # Panda Quat is (w, x, y, z)
+        node_path.setQuat(Quat(rot[3], rot[0], rot[1], rot[2]))
+        node_path.setScale(scale[0], scale[1], scale[2])
 
     def create_mesh_node(self, mesh: Mesh) -> NodePath:
         """Create a NodePath for a mesh."""
@@ -118,54 +132,55 @@ class PandaBackend:
 
     def _upload_mesh(self, mesh: Mesh):
         """Convert Mesh to Panda3D GeomNode."""
-        # Use V3n3c4t2 format to support vertex colors
-        format = GeomVertexFormat.getV3n3c4t2()
-        vdata = GeomVertexData(mesh.name, format, Geom.UHStatic)
-        
-        # Vertices
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color = GeomVertexWriter(vdata, 'color')
-        texcoord = GeomVertexWriter(vdata, 'texcoord')
-        
-        for i in range(len(mesh.vertices)):
-            v = mesh.vertices[i]
-            vertex.addData3(v[0], v[1], v[2])
+        with profile_section("UploadMesh"):
+            # Use V3n3c4t2 format to support vertex colors
+            format = GeomVertexFormat.getV3n3c4t2()
+            vdata = GeomVertexData(mesh.name, format, Geom.UHStatic)
             
-            if len(mesh.normals) > i:
-                n = mesh.normals[i]
-                normal.addData3(n[0], n[1], n[2])
+            # Vertices
+            vertex = GeomVertexWriter(vdata, 'vertex')
+            normal = GeomVertexWriter(vdata, 'normal')
+            color = GeomVertexWriter(vdata, 'color')
+            texcoord = GeomVertexWriter(vdata, 'texcoord')
+            
+            for i in range(len(mesh.vertices)):
+                v = mesh.vertices[i]
+                vertex.addData3(v[0], v[1], v[2])
                 
-            if mesh.colors is not None and len(mesh.colors) > i:
-                c = mesh.colors[i]
-                color.addData4(c[0], c[1], c[2], c[3])
+                if len(mesh.normals) > i:
+                    n = mesh.normals[i]
+                    normal.addData3(n[0], n[1], n[2])
+                    
+                if mesh.colors is not None and len(mesh.colors) > i:
+                    c = mesh.colors[i]
+                    color.addData4(c[0], c[1], c[2], c[3])
+                else:
+                    # Default to White so node color works
+                    color.addData4(1, 1, 1, 1)
+                    
+                if len(mesh.uvs) > i:
+                    uv = mesh.uvs[i]
+                    texcoord.addData2(uv[0], uv[1])
+                    
+            # Primitives
+            geom = Geom(vdata)
+            tris = GeomTriangles(Geom.UHStatic)
+            
+            if mesh.indices is not None:
+                for i in range(0, len(mesh.indices), 3):
+                    tris.addVertices(int(mesh.indices[i]), int(mesh.indices[i+1]), int(mesh.indices[i+2]))
             else:
-                # Default to White so node color works
-                color.addData4(1, 1, 1, 1)
-                
-            if len(mesh.uvs) > i:
-                uv = mesh.uvs[i]
-                texcoord.addData2(uv[0], uv[1])
-                
-        # Primitives
-        geom = Geom(vdata)
-        tris = GeomTriangles(Geom.UHStatic)
-        
-        if mesh.indices is not None:
-            for i in range(0, len(mesh.indices), 3):
-                tris.addVertices(int(mesh.indices[i]), int(mesh.indices[i+1]), int(mesh.indices[i+2]))
-        else:
-            # Non-indexed
-            for i in range(0, len(mesh.vertices), 3):
-                tris.addVertices(i, i+1, i+2)
-                
-        geom.addPrimitive(tris)
-        
-        node = GeomNode(mesh.name)
-        node.addGeom(geom)
-        
-        self._mesh_cache[mesh] = node
-        # logger.debug(f"Uploaded mesh '{mesh.name}' to backend")
+                # Non-indexed
+                for i in range(0, len(mesh.vertices), 3):
+                    tris.addVertices(i, i+1, i+2)
+                    
+            geom.addPrimitive(tris)
+            
+            node = GeomNode(mesh.name)
+            node.addGeom(geom)
+            
+            self._mesh_cache[mesh] = node
+            # logger.debug(f"Uploaded mesh '{mesh.name}' to backend")
 
     def present(self):
         """Present rendered frame."""

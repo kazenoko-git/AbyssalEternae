@@ -44,7 +44,7 @@ class ThirdPersonController(CameraController):
         
         # logger.debug("ThirdPersonController initialized")
 
-    def update(self, dt: float):
+    def update(self, dt: float, alpha: float = 1.0):
         """Update camera to follow target smoothly."""
         if not self.enabled or not self.target:
             return
@@ -55,7 +55,8 @@ class ThirdPersonController(CameraController):
             self.rotate(mouse_delta[0] * 100.0, -mouse_delta[1] * 100.0) # Invert Y
 
         # Calculate desired position
-        target_pos = self.target.get_world_position()
+        # Use interpolated position if available to prevent jitter
+        target_pos = self.target.get_interpolated_position(alpha)
 
         # Apply yaw/pitch rotation to offset
         offset_rotated = self._rotate_offset(self.offset, self.yaw, self.pitch)
@@ -103,6 +104,9 @@ class ThirdPersonController(CameraController):
         self.yaw += delta_yaw * self.sensitivity
         self.pitch += delta_pitch * self.sensitivity
         self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
+        
+        # Allow full 360 rotation
+        self.yaw = self.yaw % 360.0
 
     def _rotate_offset(self, offset: np.ndarray, yaw: float, pitch: float) -> np.ndarray:
         """Apply yaw/pitch rotation to offset vector."""

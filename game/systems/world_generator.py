@@ -12,6 +12,7 @@ from game.utils.terrain import generate_composite_height, get_height_at_world_po
 from game.systems.world_gen.biome_generator import BiomeGenerator
 from game.systems.world_gen.civilization_generator import CivilizationGenerator
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 logger = get_logger()
 
@@ -26,7 +27,7 @@ class WorldGenerator:
         self.db = db_manager
         self.ai = ai_generator
         self.region_size = 100.0 # World units per region
-        self.terrain_resolution = 20 # Higher resolution for better mountains
+        self.terrain_resolution = 10 # Reduced resolution for performance
         self.executor = ThreadPoolExecutor(max_workers=2) # Background generation
         self.logger = get_logger()
         
@@ -88,120 +89,121 @@ class WorldGenerator:
 
     def generate_region(self, dimension_id: str, x: int, y: int) -> Dict:
         """Generate a specific chunk/region within a dimension."""
-        region_id = f"{dimension_id}_{x}_{y}"
-        
-        # Check Memory Cache
-        if region_id in self.known_regions:
-            return self.known_regions[region_id]
-        
-        # Check DB
-        region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
-        if region:
-            region_dict = dict(region)
-            self.known_regions[region_id] = region_dict # Cache it
-            return region_dict
+        with profile_section(f"GenRegion"):
+            region_id = f"{dimension_id}_{x}_{y}"
             
-        # Get Dimension Context
-        dim = self.get_or_create_dimension(dimension_id, 0) # Seed 0 fallback if not found, but should be found
-        dim_seed = dim['seed']
-        
-        # Region Seed
-        region_seed = hash((dim_seed, x, y))
-        rng = random.Random(region_seed)
-        
-        # --- Biome Determination ---
-        # Sample biome at center of region
-        center_x = x * self.region_size + self.region_size/2
-        center_y = y * self.region_size + self.region_size/2
-        biome_data = self.biome_gen.get_biome_data(center_x, center_y)
-        biome = biome_data['biome']
-        
-        # self.logger.debug(f"Generating Region {region_id}: {biome}")
-        
-        # --- Terrain Heightmap Generation ---
-        heightmap_data = self._generate_heightmap(dim_seed, x, y)
-        
-        # --- Civilization & Props ---
-        entities = []
-        
-        # Check for Settlements
-        civ_data = self.civ_gen.get_civilization_data(center_x, center_y, biome_data)
-        
-        if civ_data['is_city'] or civ_data['is_village']:
-            # Generate Settlement
-            settlement_type = "city" if civ_data['is_city'] else "village"
-            buildings = self.civ_gen.generate_settlement_layout(center_x, center_y, settlement_type)
+            # Check Memory Cache
+            if region_id in self.known_regions:
+                return self.known_regions[region_id]
             
-            for b in buildings:
-                # Clamp to ground
-                # We need to construct a temporary region dict to use get_height_at_world_pos
-                temp_region_data = {
-                    'coordinates_x': x,
-                    'coordinates_y': y,
-                    'heightmap_data': json.dumps(heightmap_data.tolist())
-                }
-                cell_size = self.region_size / self.terrain_resolution
-                b_z = get_height_at_world_pos(b['x'], b['y'], temp_region_data, cell_size)
+            # Check DB
+            region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
+            if region:
+                region_dict = dict(region)
+                self.known_regions[region_id] = region_dict # Cache it
+                return region_dict
                 
-                if b_z > -1.5:
-                    b['z'] = b_z
-                    b['scale'] = 1.0
-                    entities.append(b)
-        else:
-            # Generate Nature Props
-            num_props = rng.randint(5, 15)
-            # Adjust density based on biome
-            if "Forest" in biome or "Jungle" in biome: num_props *= 3
-            if "Desert" in biome: num_props //= 2
+            # Get Dimension Context
+            dim = self.get_or_create_dimension(dimension_id, 0) # Seed 0 fallback if not found, but should be found
+            dim_seed = dim['seed']
             
-            for _ in range(num_props):
-                prop_x = x * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
-                prop_y = y * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
+            # Region Seed
+            region_seed = hash((dim_seed, x, y))
+            rng = random.Random(region_seed)
+            
+            # --- Biome Determination ---
+            # Sample biome at center of region
+            center_x = x * self.region_size + self.region_size/2
+            center_y = y * self.region_size + self.region_size/2
+            biome_data = self.biome_gen.get_biome_data(center_x, center_y)
+            biome = biome_data['biome']
+            
+            # self.logger.debug(f"Generating Region {region_id}: {biome}")
+            
+            # --- Terrain Heightmap Generation ---
+            heightmap_data = self._generate_heightmap(dim_seed, x, y)
+            
+            # --- Civilization & Props ---
+            entities = []
+            
+            # Check for Settlements
+            civ_data = self.civ_gen.get_civilization_data(center_x, center_y, biome_data)
+            
+            if civ_data['is_city'] or civ_data['is_village']:
+                # Generate Settlement
+                settlement_type = "city" if civ_data['is_city'] else "village"
+                buildings = self.civ_gen.generate_settlement_layout(center_x, center_y, settlement_type)
                 
-                temp_region_data = {
-                    'coordinates_x': x,
-                    'coordinates_y': y,
-                    'heightmap_data': json.dumps(heightmap_data.tolist())
-                }
-                cell_size = self.region_size / self.terrain_resolution
-                prop_z = get_height_at_world_pos(prop_x, prop_y, temp_region_data, cell_size)
-                
-                if prop_z > -1.5:
-                    model_type = "tree"
-                    if "Desert" in biome or "Volcanic" in biome or "Mountain" in biome:
-                        model_type = "rock"
-                    elif rng.random() > 0.8:
-                        model_type = "rock"
-                    
-                    prop = {
-                        "type": "prop",
-                        "model": model_type,
-                        "x": prop_x,
-                        "y": prop_y,
-                        "z": prop_z,
-                        "scale": rng.uniform(0.8, 1.5),
-                        "seed": rng.randint(0, 10000),
-                        "biome": biome
+                for b in buildings:
+                    # Clamp to ground
+                    # We need to construct a temporary region dict to use get_height_at_world_pos
+                    temp_region_data = {
+                        'coordinates_x': x,
+                        'coordinates_y': y,
+                        'heightmap_data': json.dumps(heightmap_data.tolist())
                     }
-                    entities.append(prop)
+                    cell_size = self.region_size / self.terrain_resolution
+                    b_z = get_height_at_world_pos(b['x'], b['y'], temp_region_data, cell_size)
+                    
+                    if b_z > -1.5:
+                        b['z'] = b_z
+                        b['scale'] = 1.0
+                        entities.append(b)
+            else:
+                # Generate Nature Props
+                num_props = rng.randint(5, 15)
+                # Adjust density based on biome
+                if "Forest" in biome or "Jungle" in biome: num_props *= 3
+                if "Desert" in biome: num_props //= 2
+                
+                for _ in range(num_props):
+                    prop_x = x * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
+                    prop_y = y * self.region_size + rng.uniform(-self.region_size/2, self.region_size/2)
+                    
+                    temp_region_data = {
+                        'coordinates_x': x,
+                        'coordinates_y': y,
+                        'heightmap_data': json.dumps(heightmap_data.tolist())
+                    }
+                    cell_size = self.region_size / self.terrain_resolution
+                    prop_z = get_height_at_world_pos(prop_x, prop_y, temp_region_data, cell_size)
+                    
+                    if prop_z > -1.5:
+                        model_type = "tree"
+                        if "Desert" in biome or "Volcanic" in biome or "Mountain" in biome:
+                            model_type = "rock"
+                        elif rng.random() > 0.8:
+                            model_type = "rock"
+                        
+                        prop = {
+                            "type": "prop",
+                            "model": model_type,
+                            "x": prop_x,
+                            "y": prop_y,
+                            "z": prop_z,
+                            "scale": rng.uniform(0.8, 1.5),
+                            "seed": rng.randint(0, 10000),
+                            "biome": biome
+                        }
+                        entities.append(prop)
+                
+            # Save Region
+            try:
+                self.db.execute("""
+                    INSERT INTO regions (region_id, dimension_id, coordinates_x, coordinates_y, biome_type, entities_json, is_generated, heightmap_data)
+                    VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
+                """, (region_id, dimension_id, x, y, biome, json.dumps(entities), json.dumps(heightmap_data.tolist())))
+                self.db.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to save region {region_id}: {e}")
             
-        # Save Region
-        try:
-            self.db.execute("""
-                INSERT INTO regions (region_id, dimension_id, coordinates_x, coordinates_y, biome_type, entities_json, is_generated, heightmap_data)
-                VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
-            """, (region_id, dimension_id, x, y, biome, json.dumps(entities), json.dumps(heightmap_data.tolist())))
-            self.db.commit()
-        except Exception as e:
-            self.logger.error(f"Failed to save region {region_id}: {e}")
-        
-        # Fetch and Cache
-        new_region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
-        if new_region:
-            region_dict = dict(new_region)
-            self.known_regions[region_id] = region_dict
-            return region_dict
-        return None
+            # Fetch and Cache
+            new_region = self.db.fetch_one("SELECT * FROM regions WHERE region_id = %s", (region_id,))
+            if new_region:
+                region_dict = dict(new_region)
+                self.known_regions[region_id] = region_dict
+                return region_dict
+            return None
 
     def _generate_heightmap(self, dim_seed: int, region_x: int, region_y: int) -> np.ndarray:
         """Generate a heightmap for a specific region."""

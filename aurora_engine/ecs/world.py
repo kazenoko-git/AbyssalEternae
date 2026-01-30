@@ -5,6 +5,7 @@ from aurora_engine.ecs.entity import Entity
 from aurora_engine.ecs.system import System
 from aurora_engine.ecs.component import Component
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 
 class World:
@@ -58,11 +59,25 @@ class World:
                 continue
 
             try:
-                # Get entities matching system's requirements
-                entities = self._get_entities_for_system(system)
-                system.update(entities, dt)
+                with profile_section(f"Sys:{type(system).__name__}"):
+                    # Get entities matching system's requirements
+                    entities = self._get_entities_for_system(system)
+                    system.update(entities, dt)
             except Exception as e:
                 self.logger.error(f"System {type(system).__name__} update failed: {e}", exc_info=True)
+
+    def save_previous_transforms(self):
+        """Save current transforms as previous for interpolation."""
+        from aurora_engine.scene.transform import Transform
+        
+        with profile_section("SaveTransforms"):
+            for entity in self.entities:
+                if not entity.active:
+                    continue
+                    
+                transform = entity.get_component(Transform)
+                if transform:
+                    transform.save_for_interpolation()
 
     def interpolate_transforms(self, alpha: float):
         """Interpolate transforms for smooth rendering."""
@@ -75,6 +90,10 @@ class World:
                 
             transform = entity.get_component(Transform)
             if transform:
+                # This method might be used if we had a separate RenderTransform component
+                # or if we were pushing state to the renderer here.
+                # Since the renderer pulls from Transform, we don't strictly need to do anything here
+                # unless we want to cache the interpolated matrix.
                 pass
 
     def _get_entities_for_system(self, system: System) -> List[Entity]:

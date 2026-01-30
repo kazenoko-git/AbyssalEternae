@@ -13,6 +13,7 @@ from aurora_engine.physics.physics_world import PhysicsWorld
 from aurora_engine.physics.dynamic_physics_system import DynamicPhysicsSystem
 from aurora_engine.physics.static_physics_system import StaticPhysicsSystem
 from aurora_engine.ui.ui_manager import UIManager
+from aurora_engine.utils.profiler import _profiler, profile_section
 
 
 class Application(ABC):
@@ -30,6 +31,7 @@ class Application(ABC):
         self.logger.info("Initializing Aurora Engine")
 
         self.running = False
+        self.frame_count = 0
 
         # Core subsystems
         self.time = TimeManager(
@@ -51,39 +53,49 @@ class Application(ABC):
         max_frame_time = 0.25  # Prevent spiral of death
 
         while self.running:
-            frame_time = self.time.tick()
+            with profile_section("Frame"):
+                frame_time = self.time.tick()
 
-            # Clamp frame time
-            if frame_time > max_frame_time:
-                frame_time = max_frame_time
-                self.logger.warning(f"Frame time clamped: {frame_time:.3f}s")
+                # Clamp frame time
+                if frame_time > max_frame_time:
+                    frame_time = max_frame_time
+                    self.logger.warning(f"Frame time clamped: {frame_time:.3f}s")
 
-            accumulator += frame_time
+                accumulator += frame_time
 
-            # Handle input (once per frame)
-            try:
-                self.input.poll()
-            except Exception as e:
-                self.logger.error(f"Input poll failed: {e}", exc_info=True)
-
-            # Fixed timestep updates
-            while accumulator >= self.time.fixed_delta:
+                # Handle input (once per frame)
                 try:
-                    self.fixed_update(self.time.fixed_delta)
+                    with profile_section("Input"):
+                        self.input.poll()
                 except Exception as e:
-                    self.logger.error(f"Fixed update failed: {e}", exc_info=True)
+                    self.logger.error(f"Input poll failed: {e}", exc_info=True)
 
-                accumulator -= self.time.fixed_delta
-                self.time.increment_fixed_time()
+                # Fixed timestep updates
+                while accumulator >= self.time.fixed_delta:
+                    try:
+                        with profile_section("FixedUpdate"):
+                            self.fixed_update(self.time.fixed_delta)
+                    except Exception as e:
+                        self.logger.error(f"Fixed update failed: {e}", exc_info=True)
 
-            # Variable timestep update (interpolation, rendering)
-            alpha = accumulator / self.time.fixed_delta
-            try:
-                self.update(frame_time, alpha)
-                self.late_update(frame_time, alpha) # Added late_update
-                self.render(alpha)
-            except Exception as e:
-                self.logger.error(f"Update/render failed: {e}", exc_info=True)
+                    accumulator -= self.time.fixed_delta
+                    self.time.increment_fixed_time()
+
+                # Variable timestep update (interpolation, rendering)
+                alpha = accumulator / self.time.fixed_delta
+                try:
+                    with profile_section("Update"):
+                        self.update(frame_time, alpha)
+                    with profile_section("LateUpdate"):
+                        self.late_update(frame_time, alpha) # Added late_update
+                    with profile_section("Render"):
+                        self.render(alpha)
+                except Exception as e:
+                    self.logger.error(f"Update/render failed: {e}", exc_info=True)
+            
+            self.frame_count += 1
+            if self.frame_count % 60 == 0:
+                _profiler.print_report()
 
         self.shutdown()
 
@@ -123,6 +135,9 @@ class Application(ABC):
 
     def fixed_update(self, dt: float):
         """Deterministic simulation update."""
+        # Save previous transforms for interpolation
+        self.world.save_previous_transforms()
+
         self.world.update_systems(dt)
         self.physics.step(dt)
 

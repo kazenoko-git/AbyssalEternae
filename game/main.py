@@ -164,7 +164,7 @@ class Rifted(Application):
     def late_update(self, dt: float, alpha: float):
         """Update camera after physics."""
         if hasattr(self, 'camera_controller'):
-            self.camera_controller.update(dt)
+            self.camera_controller.update(dt, alpha)
 
     def _process_futures(self):
         """Process completed futures."""
