@@ -11,8 +11,7 @@ logger = get_logger()
 
 class ThirdPersonController(CameraController):
     """
-    Third-person follow camera.
-    Follows a target with offset, smoothing, and collision.
+    Third-person follow camera (Genshin/HSR style).
     """
 
     def __init__(self, camera, target: Transform, input_manager: InputManager):
@@ -21,121 +20,176 @@ class ThirdPersonController(CameraController):
         self.target = target
         self.input_manager = input_manager
 
-        # Offset from target
-        self.offset = np.array([0.0, -5.0, 2.0], dtype=np.float32)
-
-        # Mouse/stick input
-        self.yaw = 0.0
-        self.pitch = 20.0
-        self.sensitivity = 0.5 # Increased sensitivity
-
-        # Constraints
-        self.min_pitch = -80.0
-        self.max_pitch = 80.0
+        # Configuration
+        self.target_height = 1.4  # Height offset on target (look at chest/head)
+        self.distance = 6.0
         self.min_distance = 2.0
-        self.max_distance = 10.0
-
-        # Smoothing
-        self.position_damping = 0.1
-        self.rotation_damping = 0.05
-
-        # Current state
-        self._current_position = self.camera.transform.local_position.copy()
+        self.max_distance = 12.0
         
-        # logger.debug("ThirdPersonController initialized")
+        self.yaw = 0.0
+        self.pitch = 15.0
+        self.min_pitch = -60.0 # Look down (camera high)
+        self.max_pitch = 75.0  # Look up (camera low) - Limit to avoid ground clipping
+        
+        # Sensitivity
+        self.sensitivity_x = 120.0 
+        self.sensitivity_y = 120.0
+        
+        # Smoothing
+        # High values = snappier. Low values = smoother/laggier.
+        self.rotation_smooth_speed = 25.0 
+        self.follow_smooth_speed = 10.0
+        self.zoom_smooth_speed = 10.0
+        
+        # Collision
+        self.physics_world = None
+        self.collision_radius = 0.2
+        self.collision_buffer = 0.2 # Distance to pull back from wall
+
+        # State
+        self._current_distance = self.distance
+        self._current_yaw = self.yaw
+        self._current_pitch = self.pitch
+        
+        # Initialize position immediately
+        self._update_camera(0.0, snap=True)
 
     def update(self, dt: float, alpha: float = 1.0):
-        """Update camera to follow target smoothly."""
         if not self.enabled or not self.target:
             return
+
+        # Input
+        if self.input_manager.mouse_locked:
+            mouse_delta = self.input_manager.get_mouse_delta()
+            # mouse_delta is normalized (-1 to 1)
+            # InputManager returns +Y for Mouse Up.
             
-        # Handle Mouse Input
-        mouse_delta = self.input_manager.get_mouse_delta()
-        if mouse_delta[0] != 0 or mouse_delta[1] != 0:
-            # Multiplier increased for better responsiveness (was 100.0)
-            self.rotate(mouse_delta[0] * 500.0, -mouse_delta[1] * 500.0) # Invert Y
-
-        # Calculate desired position
-        # Use interpolated position if available to prevent jitter
-        target_pos = self.target.get_interpolated_position(alpha)
-
-        # Apply yaw/pitch rotation to offset
-        offset_rotated = self._rotate_offset(self.offset, self.yaw, self.pitch)
-        desired_position = target_pos + offset_rotated
-
-        # Smooth position
-        self._current_position = self._lerp(
-            self._current_position,
-            desired_position,
-            self.position_damping
-        )
-
-        # Set camera position
-        self.camera.transform.set_world_position(self._current_position)
-
-        # Look at target
-        # Calculate direction vector
-        direction = target_pos - self._current_position
-        if np.linalg.norm(direction) > 0.001:
-            direction = direction / np.linalg.norm(direction)
-            
-            # Create look-at rotation
-            forward = direction
-            up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-            
-            if abs(np.dot(forward, up)) > 0.99:
-                up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+            if abs(mouse_delta[0]) > 0.0001 or abs(mouse_delta[1]) > 0.0001:
+                # Yaw: Mouse Right -> dx > 0.
+                # We want View Right -> Camera Left (CCW).
+                # Yaw Decrease -> Camera Left.
+                self.yaw -= mouse_delta[0] * self.sensitivity_x
                 
-            right = np.cross(forward, up)
-            right = right / np.linalg.norm(right)
-            
-            up = np.cross(right, forward)
-            up = up / np.linalg.norm(up)
-            
-            rot_mat = np.eye(3, dtype=np.float32)
-            rot_mat[:, 0] = right
-            rot_mat[:, 1] = forward
-            rot_mat[:, 2] = up
-            
-            quat = matrix_to_quaternion(rot_mat)
-            self.camera.transform.local_rotation = quat
+                # Pitch: Mouse Up -> dy > 0.
+                # We want Look Up -> Camera Low -> Pitch Decrease.
+                self.pitch -= mouse_delta[1] * self.sensitivity_y
+                
+                self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
+                self.yaw = self.yaw % 360.0
+                
+        # Zoom (Scroll) - TODO: Add scroll support to InputManager
+        # if self.input_manager.get_scroll_y() != 0:
+        #     self.distance -= self.input_manager.get_scroll_y() * 2.0
+        #     self.distance = np.clip(self.distance, self.min_distance, self.max_distance)
 
-    def rotate(self, delta_yaw: float, delta_pitch: float):
-        """Rotate camera (call from input system)."""
-        self.yaw += delta_yaw * self.sensitivity
-        self.pitch += delta_pitch * self.sensitivity
-        self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
+        self._update_camera(dt, alpha)
+
+    def _update_camera(self, dt: float, alpha: float = 1.0, snap: bool = False):
+        # Smoothing
+        if snap or dt <= 0:
+            self._current_yaw = self.yaw
+            self._current_pitch = self.pitch
+            self._current_distance = self.distance
+            t_rot = 1.0
+            t_pos = 1.0
+        else:
+            # Frame-rate independent smoothing
+            t_rot = min(dt * self.rotation_smooth_speed, 1.0)
+            t_pos = min(dt * self.follow_smooth_speed, 1.0)
+            
+            self._current_yaw = self._lerp_angle(self._current_yaw, self.yaw, t_rot)
+            self._current_pitch = self._lerp(self._current_pitch, self.pitch, t_rot)
         
-        # Allow full 360 rotation
-        self.yaw = self.yaw % 360.0
-
-    def _rotate_offset(self, offset: np.ndarray, yaw: float, pitch: float) -> np.ndarray:
-        """Apply yaw/pitch rotation to offset vector."""
+        # Calculate target pivot position
+        target_pos = self.target.get_interpolated_position(alpha)
+        pivot_pos = target_pos + np.array([0, 0, self.target_height], dtype=np.float32)
+        
         # Convert to radians
-        yaw_rad = np.radians(yaw)
-        pitch_rad = np.radians(pitch)
+        y_rad = np.radians(self._current_yaw)
+        p_rad = np.radians(self._current_pitch)
+        
+        cp = np.cos(p_rad)
+        sp = np.sin(p_rad)
+        cy = np.cos(y_rad)
+        sy = np.sin(y_rad)
+        
+        # Direction FROM Target TO Camera
+        # Yaw 0 = Looking +Y (Camera at -Y)
+        # Pitch 0 = Horizontal
+        # Pitch 90 = Camera directly above (looking down)
+        dir_to_cam = np.array([
+            sy * cp,
+            -cy * cp,
+            sp
+        ], dtype=np.float32)
+        
+        # Collision Check
+        desired_distance = self.distance
+        final_distance = desired_distance
+        
+        if self.physics_world:
+            # Raycast from pivot to desired camera pos
+            ray_dir = dir_to_cam
+            ray_dist = desired_distance
+            
+            # Add a small buffer to collision radius
+            hit = self.physics_world.raycast(pivot_pos, ray_dir, ray_dist)
+            if hit:
+                hit_pos, _, _ = hit
+                dist_to_hit = np.linalg.norm(hit_pos - pivot_pos)
+                # Pull back slightly
+                final_distance = max(self.min_distance, dist_to_hit - self.collision_buffer)
+        
+        # Smooth distance
+        if snap:
+            self._current_distance = final_distance
+        else:
+            t_dist = min(dt * self.zoom_smooth_speed, 1.0)
+            self._current_distance = self._lerp(self._current_distance, final_distance, t_dist)
+        
+        # Final Position
+        cam_pos = pivot_pos + dir_to_cam * self._current_distance
+        
+        self.camera.transform.set_world_position(cam_pos)
+        
+        # Look At Rotation
+        self._look_at(pivot_pos)
 
-        # Create rotation matrix
-        cy = np.cos(yaw_rad)
-        sy = np.sin(yaw_rad)
-        rot_z = np.array([
-            [cy, -sy, 0],
-            [sy, cy, 0],
-            [0, 0, 1]
-        ])
+    def _look_at(self, target_pos):
+        cam_pos = self.camera.transform.get_world_position()
+        direction = target_pos - cam_pos
+        dist = np.linalg.norm(direction)
+        if dist < 0.001:
+            return
+            
+        direction /= dist
         
-        cp = np.cos(pitch_rad)
-        sp = np.sin(pitch_rad)
-        rot_x = np.array([
-            [1, 0, 0],
-            [0, cp, -sp],
-            [0, sp, cp]
-        ])
+        # Standard LookAt
+        forward = direction
+        up = np.array([0, 0, 1], dtype=np.float32)
         
-        rot = np.dot(rot_z, rot_x)
+        # Handle gimbal lock case (looking straight up/down)
+        if abs(np.dot(forward, up)) > 0.99:
+            # Use Y as up if looking along Z
+            up = np.array([0, 1, 0], dtype=np.float32)
+            
+        right = np.cross(forward, up)
+        right /= np.linalg.norm(right)
         
-        return np.dot(rot, offset)
+        up = np.cross(right, forward)
+        up /= np.linalg.norm(up)
+        
+        # Construct matrix
+        rot_mat = np.eye(3, dtype=np.float32)
+        rot_mat[:, 0] = right
+        rot_mat[:, 1] = forward
+        rot_mat[:, 2] = up
+        
+        self.camera.transform.local_rotation = matrix_to_quaternion(rot_mat)
 
-    def _lerp(self, a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
-        """Linear interpolation."""
-        return a + t * (b - a)
+    def _lerp(self, a, b, t):
+        return a + (b - a) * t
+        
+    def _lerp_angle(self, a, b, t):
+        diff = (b - a + 180) % 360 - 180
+        return a + diff * t

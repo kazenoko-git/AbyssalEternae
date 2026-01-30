@@ -78,7 +78,17 @@ class Renderer:
             if not self.main_camera:
                 return
 
-            # Set camera matrices
+            # Update camera transform in backend
+            # We need to sync the main camera's transform to the Panda3D camera node
+            # This is crucial for the view matrix to be correct in Panda3D's internal rendering
+            cam_transform = self.main_camera.transform
+            pos = cam_transform.get_world_position()
+            rot = cam_transform.get_world_rotation()
+            
+            # Update Panda3D camera node
+            self.backend.update_camera_transform(pos, rot)
+
+            # Set camera matrices (for custom pipeline if used)
             view_matrix = self.main_camera.get_view_matrix()
             proj_matrix = self.main_camera.get_projection_matrix()
 
@@ -132,6 +142,8 @@ class Renderer:
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
             # Update transform
             # Use decomposed values for faster update (avoiding matrix transpose in Python)
+            # Use interpolated transform if available (usually calculated in Application.render)
+            # But here we just grab current world transform which should be interpolated by World.interpolate_transforms
             pos = transform.get_world_position()
             rot = transform.get_world_rotation()
             scale = transform.get_world_scale()

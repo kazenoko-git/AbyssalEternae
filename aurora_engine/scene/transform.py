@@ -133,6 +133,31 @@ class Transform:
             self._update_world_transform()
         return self._world_scale
 
+    @property
+    def forward(self) -> np.ndarray:
+        """Get forward vector (local +Y rotated to world)."""
+        # Assuming +Y is forward in this engine based on previous code
+        rot = self.get_world_rotation()
+        # Rotate vector [0, 1, 0] by quaternion
+        # q * v * q_inv
+        # Or just extract from matrix column 1
+        mat = quaternion_to_matrix(rot)
+        return mat[:, 1] # Y-axis
+
+    @property
+    def right(self) -> np.ndarray:
+        """Get right vector (local +X rotated to world)."""
+        rot = self.get_world_rotation()
+        mat = quaternion_to_matrix(rot)
+        return mat[:, 0] # X-axis
+
+    @property
+    def up(self) -> np.ndarray:
+        """Get up vector (local +Z rotated to world)."""
+        rot = self.get_world_rotation()
+        mat = quaternion_to_matrix(rot)
+        return mat[:, 2] # Z-axis
+
     def _update_world_transform(self):
         """Recalculate world transform from local transform and parent."""
         with profile_section("TransformUpdate"):

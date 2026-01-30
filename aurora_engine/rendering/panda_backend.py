@@ -64,23 +64,21 @@ class PandaBackend:
             with profile_section("PandaTaskStep"):
                 self.base.taskMgr.step()
 
+    def update_camera_transform(self, pos: np.ndarray, rot: np.ndarray):
+        """Update Panda3D camera node transform."""
+        if self.base and self.base.camera:
+            self.base.camera.setPos(pos[0], pos[1], pos[2])
+            # Panda Quat is (w, x, y, z)
+            self.base.camera.setQuat(Quat(rot[3], rot[0], rot[1], rot[2]))
+
     def set_view_projection(self, view: np.ndarray, projection: np.ndarray):
         """Set camera matrices."""
-        # Extract camera position and rotation from view matrix (inverse view)
-        inv_view = np.linalg.inv(view)
+        # Panda3D manages view matrix via camera node transform (set in update_camera_transform)
+        # So we don't need to manually set view matrix here unless we are overriding it.
+        # However, we might want to set projection matrix (Lens)
         
-        # Set camera transform
-        # We need to transpose the matrix because our engine uses Column-Major (translation in col 3)
-        # while Panda3D uses Row-Major (translation in row 3).
-        mat = LMatrix4f()
-        for i in range(4):
-            for j in range(4):
-                # Transpose: setCell(row, col, value) -> use (j, i) from source to transpose
-                mat.setCell(j, i, inv_view[i, j])
-                
-        self.base.camera.setMat(mat)
-        
-        # TODO: Handle projection matrix if needed (usually handled by Lens)
+        # TODO: Update Lens properties if projection changes (FOV, etc.)
+        pass
 
     def draw_mesh(self, mesh: Mesh, world_matrix: np.ndarray):
         """Draw a mesh with given transform."""

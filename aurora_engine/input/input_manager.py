@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from aurora_engine.input.input_context import InputContext
 from aurora_engine.input.action_map import InputDevice
 from aurora_engine.core.logging import get_logger
+from aurora_engine.utils.profiler import profile_section
 
 
 class InputManager:
@@ -56,11 +57,9 @@ class InputManager:
             props = WindowProperties()
             props.setCursorHidden(locked)
             
-            # Use Relative mode for infinite movement if supported
-            if locked:
-                props.setMouseMode(WindowProperties.M_relative)
-            else:
-                props.setMouseMode(WindowProperties.M_absolute)
+            # Use Absolute mode + Manual Centering for most reliable control
+            # M_relative can be buggy on some OS/Panda versions
+            props.setMouseMode(WindowProperties.M_absolute)
                 
             self.backend.window.requestProperties(props)
             
@@ -70,7 +69,9 @@ class InputManager:
                 h = self.backend.window.getYSize()
                 if w > 0 and h > 0:
                     self.backend.window.movePointer(0, w // 2, h // 2)
-                self._input_state['mouse_pos'] = (0.0, 0.0) # Reset internal state
+            
+            # Reset delta on mode switch to prevent jumps
+            self._input_state['mouse_delta'] = (0.0, 0.0)
 
     def poll(self):
         """Poll hardware for input state."""
@@ -96,11 +97,16 @@ class InputManager:
             if w > 0 and h > 0:
                 cx, cy = w // 2, h // 2
                 
-                if win.movePointer(0, cx, cy):
-                    dx = x - cx
-                    dy = y - cy
+                dx = x - cx
+                dy = y - cy
+                
+                if dx != 0 or dy != 0:
+                    # Only move pointer if we actually moved
+                    win.movePointer(0, cx, cy)
                     # Normalize to -1..1 range roughly to match previous behavior
-                    self._input_state['mouse_delta'] = (dx / w * 2.0, dy / h * 2.0)
+                    # Negate Y because window coords are Top-Left origin (Y down), 
+                    # but we want Y Up as positive (Standard 3D/Graph)
+                    self._input_state['mouse_delta'] = (dx / w * 2.0, -dy / h * 2.0)
                 else:
                     self._input_state['mouse_delta'] = (0.0, 0.0)
         else:

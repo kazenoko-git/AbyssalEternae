@@ -91,22 +91,24 @@ class Rifted(Application):
         camera = Camera()
         # Pass input manager to controller
         self.camera_controller = ThirdPersonController(camera, player_transform, self.input)
+        # Inject physics world for collision
+        self.camera_controller.physics_world = self.physics
+
         self.renderer.register_camera(camera)
         
         # Lock mouse for camera control
         self.input.set_mouse_lock(True)
 
         # Add game systems
-        self.world.add_system(PlayerSystem(self.input))
+        player_system = PlayerSystem(self.input)
+        # Inject camera transform into player system for camera-relative movement
+        player_system.camera_transform = camera.transform
+        self.world.add_system(player_system)
+        
         self.world.add_system(FadeInSystem())
         
         # Pass player transform to DayNightCycle for shadow following
         day_night = DayNightCycle(self.renderer)
-        # We need to manually set the target since DayNightCycle doesn't take it in init
-        # Or modify DayNightCycle to accept it.
-        # Let's modify DayNightCycle to look for a 'target' attribute or just use main camera position if available.
-        # But DayNightCycle is a System, it doesn't easily access the camera unless passed.
-        # Let's just pass the player transform to it.
         day_night.target = player_transform
         self.world.add_system(day_night)
         

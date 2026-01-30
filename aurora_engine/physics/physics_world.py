@@ -1,6 +1,6 @@
 # aurora_engine/physics/physics_world.py
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import numpy as np
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.physics.rigidbody import RigidBody
@@ -215,8 +215,40 @@ class PhysicsWorld:
             
         return shape
 
-    def raycast(self, origin: np.ndarray, direction: np.ndarray, max_distance: float):
-        pass
+    def raycast(self, origin: np.ndarray, direction: np.ndarray, max_distance: float) -> Optional[Tuple[np.ndarray, np.ndarray, Entity]]:
+        """
+        Perform a raycast in the physics world.
+        Returns (hit_position, hit_normal, hit_entity) or None.
+        """
+        if not self._bullet_world:
+            return None
+            
+        from panda3d.core import Point3, Vec3, BitMask32
+        
+        p_from = Point3(origin[0], origin[1], origin[2])
+        p_to = Point3(origin[0] + direction[0] * max_distance,
+                      origin[1] + direction[1] * max_distance,
+                      origin[2] + direction[2] * max_distance)
+        
+        # Default mask (all bits)
+        mask = BitMask32.allOn()
+        
+        result = self._bullet_world.rayTestClosest(p_from, p_to, mask)
+        
+        if result.hasHit():
+            hit_pos = result.getHitPos()
+            hit_normal = result.getHitNormal()
+            node = result.getNode()
+            
+            entity = self._node_to_entity.get(node)
+            
+            return (
+                np.array([hit_pos.x, hit_pos.y, hit_pos.z], dtype=np.float32),
+                np.array([hit_normal.x, hit_normal.y, hit_normal.z], dtype=np.float32),
+                entity
+            )
+            
+        return None
 
     def shutdown(self):
         self.bodies.clear()
