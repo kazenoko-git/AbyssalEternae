@@ -27,7 +27,7 @@ class ThirdPersonController(CameraController):
         # Mouse/stick input
         self.yaw = 0.0
         self.pitch = 20.0
-        self.sensitivity = 0.1
+        self.sensitivity = 0.5 # Increased sensitivity
 
         # Constraints
         self.min_pitch = -80.0
@@ -52,7 +52,8 @@ class ThirdPersonController(CameraController):
         # Handle Mouse Input
         mouse_delta = self.input_manager.get_mouse_delta()
         if mouse_delta[0] != 0 or mouse_delta[1] != 0:
-            self.rotate(mouse_delta[0] * 100.0, -mouse_delta[1] * 100.0) # Invert Y
+            # Multiplier increased for better responsiveness (was 100.0)
+            self.rotate(mouse_delta[0] * 500.0, -mouse_delta[1] * 500.0) # Invert Y
 
         # Calculate desired position
         # Use interpolated position if available to prevent jitter

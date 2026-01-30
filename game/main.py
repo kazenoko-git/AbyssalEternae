@@ -92,6 +92,9 @@ class Rifted(Application):
         # Pass input manager to controller
         self.camera_controller = ThirdPersonController(camera, player_transform, self.input)
         self.renderer.register_camera(camera)
+        
+        # Lock mouse for camera control
+        self.input.set_mouse_lock(True)
 
         # Add game systems
         self.world.add_system(PlayerSystem(self.input))
@@ -160,6 +163,12 @@ class Rifted(Application):
             self.last_chunk_check = 0.0
         
         self._process_futures()
+        
+        # Toggle mouse lock with Escape
+        if self.input.is_key_down('escape'):
+            self.input.set_mouse_lock(False)
+        elif self.input.is_key_down('mouse1') and not self.input.mouse_locked:
+            self.input.set_mouse_lock(True)
         
     def late_update(self, dt: float, alpha: float):
         """Update camera after physics."""
