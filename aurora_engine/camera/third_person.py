@@ -29,7 +29,7 @@ class ThirdPersonController(CameraController):
         self.yaw = 0.0
         self.pitch = 10.0         # Default pitch (slightly looking down)
         self.min_pitch = -60.0    # Look down (camera high)
-        self.max_pitch = 75.0     # Look up (camera low)
+        self.max_pitch = 70.0     # Look up (camera low)
         
         # Sensitivity
         self.sensitivity_x = 120.0 
@@ -43,7 +43,7 @@ class ThirdPersonController(CameraController):
         # Collision
         self.physics_world = None
         self.collision_radius = 0.2
-        self.collision_buffer = 0.5 # Increased buffer to keep camera away from walls
+        self.collision_buffer = 0.5 
 
         # State
         self._current_distance = self.distance
@@ -61,15 +61,19 @@ class ThirdPersonController(CameraController):
         if self.input_manager.mouse_locked:
             mouse_delta = self.input_manager.get_mouse_delta()
             
-            if abs(mouse_delta[0]) > 0.0001 or abs(mouse_delta[1]) > 0.0001:
-                self.yaw -= mouse_delta[0] * self.sensitivity_x
-                self.pitch -= mouse_delta[1] * self.sensitivity_y
+            # Clamp delta to prevent massive jumps
+            dx = np.clip(mouse_delta[0], -0.5, 0.5)
+            dy = np.clip(mouse_delta[1], -0.5, 0.5)
+            
+            if abs(dx) > 0.0001 or abs(dy) > 0.0001:
+                self.yaw -= dx * self.sensitivity_x
+                self.pitch += dy * self.sensitivity_y
                 
-                # Clamp pitch strictly to prevent gimbal lock or flipping
+                # Clamp pitch strictly
                 self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
                 self.yaw = self.yaw % 360.0
                 
-        # Zoom (Scroll) - Placeholder for scroll input
+        # Zoom (Scroll)
         # if self.input_manager.get_scroll_y() != 0:
         #     self.distance -= self.input_manager.get_scroll_y() * 2.0
         #     self.distance = np.clip(self.distance, self.min_distance, self.max_distance)
@@ -77,6 +81,9 @@ class ThirdPersonController(CameraController):
         self._update_camera(dt, alpha)
 
     def _update_camera(self, dt: float, alpha: float = 1.0, snap: bool = False):
+        # Clamp dt to prevent explosion on lag spikes
+        dt = min(dt, 0.1)
+        
         # Smoothing
         if snap or dt <= 0:
             self._current_yaw = self.yaw
@@ -85,7 +92,6 @@ class ThirdPersonController(CameraController):
             t_rot = 1.0
             t_pos = 1.0
         else:
-            # Frame-rate independent smoothing
             t_rot = min(dt * self.rotation_smooth_speed, 1.0)
             t_pos = min(dt * self.follow_smooth_speed, 1.0)
             
@@ -117,16 +123,13 @@ class ThirdPersonController(CameraController):
         final_distance = desired_distance
         
         if self.physics_world:
-            # Raycast from pivot to desired camera pos
             ray_dir = dir_to_cam
             ray_dist = desired_distance
             
-            # Add a small buffer to collision radius
             hit = self.physics_world.raycast(pivot_pos, ray_dir, ray_dist)
             if hit:
                 hit_pos, _, _ = hit
                 dist_to_hit = np.linalg.norm(hit_pos - pivot_pos)
-                # Pull back slightly
                 final_distance = max(self.min_distance, dist_to_hit - self.collision_buffer)
         
         # Smooth distance
@@ -157,15 +160,17 @@ class ThirdPersonController(CameraController):
         forward = direction
         up = np.array([0, 0, 1], dtype=np.float32)
         
-        # Handle gimbal lock case (looking straight up/down)
-        # If we are looking nearly straight up or down, the cross product with Z-up becomes unstable.
-        # We switch to Y-up temporarily to maintain a valid right vector.
-        if abs(np.dot(forward, up)) > 0.99:
-            # Use Y as up if looking along Z
+        # Handle gimbal lock case
+        # If looking straight up/down, use Y as up
+        if abs(np.dot(forward, up)) > 0.98:
             up = np.array([0, 1, 0], dtype=np.float32)
             
         right = np.cross(forward, up)
-        right /= np.linalg.norm(right)
+        if np.linalg.norm(right) < 0.001:
+             # Fallback if cross product failed (should be caught by dot check, but safe guard)
+             right = np.array([1, 0, 0], dtype=np.float32)
+        else:
+             right /= np.linalg.norm(right)
         
         up = np.cross(right, forward)
         up /= np.linalg.norm(up)

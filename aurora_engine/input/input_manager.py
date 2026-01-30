@@ -29,9 +29,9 @@ class InputManager:
             'watcher': None
         }
         
-        # Anti-drift state
+        # Anti-drift / DPI-safe state
         self._last_mouse_pos = (0, 0)
-        self._ignore_next_mouse_delta = False
+        self._skip_next_delta = False
         
         self.logger.info("InputManager initialized")
 
@@ -55,14 +55,15 @@ class InputManager:
         self.logger.info(f"Set active input context: {context.name}")
 
     def set_mouse_lock(self, locked: bool):
-        """Lock or unlock the mouse cursor to the center of the screen."""
+        """Lock or unlock the mouse cursor."""
         self.mouse_locked = locked
         if self.backend and self.backend.window:
             from panda3d.core import WindowProperties
             props = WindowProperties()
             props.setCursorHidden(locked)
             
-            # Use Absolute mode + Manual Centering for most reliable control
+            # Use Absolute mode. Relative mode can be buggy on secondary displays (macOS/Windows).
+            # We will handle centering manually with a DPI-safe algorithm.
             props.setMouseMode(WindowProperties.M_absolute)
                 
             self.backend.window.requestProperties(props)
@@ -75,11 +76,8 @@ class InputManager:
                     cx, cy = w // 2, h // 2
                     self.backend.window.movePointer(0, cx, cy)
                     self._last_mouse_pos = (cx, cy)
-                    
-                # Ignore the next delta calculation to prevent jump from previous position
-                self._ignore_next_mouse_delta = True
+                    self._skip_next_delta = True
             
-            # Reset delta on mode switch to prevent jumps
             self._input_state['mouse_delta'] = (0.0, 0.0)
 
     def poll(self):
@@ -95,7 +93,6 @@ class InputManager:
             self._input_state['watcher'] = base.mouseWatcherNode
 
         if self.mouse_locked:
-            # Manual centering approach for infinite rotation
             md = win.getPointer(0)
             x = md.getX()
             y = md.getY()
@@ -103,35 +100,40 @@ class InputManager:
             w = win.getXSize()
             h = win.getYSize()
             
-            if w > 0 and h > 0:
-                cx, cy = w // 2, h // 2
-                
-                # Calculate delta from center
-                dx = x - cx
-                dy = y - cy
-                
-                # Anti-drift: If mouse hasn't moved since last read, ignore delta.
-                # This handles cases where movePointer is lazy/deferred.
-                if (x, y) == self._last_mouse_pos:
-                    dx = 0
-                    dy = 0
-                
+            # DPI-Safe Delta Calculation:
+            # We calculate delta based on the *previous frame's actual position*.
+            # We do NOT assume the mouse is at the center.
+            # We only re-center when the mouse gets too close to the edge.
+            # When we re-center, we skip the next frame's delta to avoid the "jump" caused by 
+            # coordinate system mismatches (DPI scaling) on secondary monitors.
+            
+            if self._skip_next_delta:
+                dx = 0
+                dy = 0
+                self._skip_next_delta = False
                 self._last_mouse_pos = (x, y)
+            else:
+                dx = x - self._last_mouse_pos[0]
+                dy = y - self._last_mouse_pos[1]
+                self._last_mouse_pos = (x, y)
+            
+            # Normalize delta
+            if w > 0 and h > 0:
+                # Negate Y because window coords are Top-Left origin
+                self._input_state['mouse_delta'] = (dx / w * 2.0, -dy / h * 2.0)
+            else:
+                self._input_state['mouse_delta'] = (0.0, 0.0)
                 
-                if self._ignore_next_mouse_delta:
-                    dx = 0
-                    dy = 0
-                    self._ignore_next_mouse_delta = False
-                    # Force re-center just in case
+            # Re-center if near edge (Edge Reset)
+            # This prevents running out of screen space while avoiding constant re-centering jitter
+            margin = 100
+            if x < margin or x > w - margin or y < margin or y > h - margin:
+                if w > 0 and h > 0:
+                    cx, cy = w // 2, h // 2
                     win.movePointer(0, cx, cy)
-                elif dx != 0 or dy != 0:
-                    # Only move pointer if we actually moved
-                    win.movePointer(0, cx, cy)
-                    # Normalize to -1..1 range roughly
-                    # Negate Y because window coords are Top-Left origin
-                    self._input_state['mouse_delta'] = (dx / w * 2.0, -dy / h * 2.0)
-                else:
-                    self._input_state['mouse_delta'] = (0.0, 0.0)
+                    # Important: Skip next delta because 'x' next frame will jump to 'cx' (or scaled cx)
+                    self._skip_next_delta = True
+
         else:
             # Standard absolute mouse mode
             if not base.mouseWatcherNode:
