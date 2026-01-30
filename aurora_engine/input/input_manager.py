@@ -28,6 +28,11 @@ class InputManager:
             'mouse_delta': (0.0, 0.0),
             'watcher': None
         }
+        
+        # Anti-drift state
+        self._last_mouse_pos = (0, 0)
+        self._ignore_next_mouse_delta = False
+        
         self.logger.info("InputManager initialized")
 
     def initialize(self, backend):
@@ -58,7 +63,6 @@ class InputManager:
             props.setCursorHidden(locked)
             
             # Use Absolute mode + Manual Centering for most reliable control
-            # M_relative can be buggy on some OS/Panda versions
             props.setMouseMode(WindowProperties.M_absolute)
                 
             self.backend.window.requestProperties(props)
@@ -68,7 +72,12 @@ class InputManager:
                 w = self.backend.window.getXSize()
                 h = self.backend.window.getYSize()
                 if w > 0 and h > 0:
-                    self.backend.window.movePointer(0, w // 2, h // 2)
+                    cx, cy = w // 2, h // 2
+                    self.backend.window.movePointer(0, cx, cy)
+                    self._last_mouse_pos = (cx, cy)
+                    
+                # Ignore the next delta calculation to prevent jump from previous position
+                self._ignore_next_mouse_delta = True
             
             # Reset delta on mode switch to prevent jumps
             self._input_state['mouse_delta'] = (0.0, 0.0)
@@ -97,15 +106,29 @@ class InputManager:
             if w > 0 and h > 0:
                 cx, cy = w // 2, h // 2
                 
+                # Calculate delta from center
                 dx = x - cx
                 dy = y - cy
                 
-                if dx != 0 or dy != 0:
+                # Anti-drift: If mouse hasn't moved since last read, ignore delta.
+                # This handles cases where movePointer is lazy/deferred.
+                if (x, y) == self._last_mouse_pos:
+                    dx = 0
+                    dy = 0
+                
+                self._last_mouse_pos = (x, y)
+                
+                if self._ignore_next_mouse_delta:
+                    dx = 0
+                    dy = 0
+                    self._ignore_next_mouse_delta = False
+                    # Force re-center just in case
+                    win.movePointer(0, cx, cy)
+                elif dx != 0 or dy != 0:
                     # Only move pointer if we actually moved
                     win.movePointer(0, cx, cy)
-                    # Normalize to -1..1 range roughly to match previous behavior
-                    # Negate Y because window coords are Top-Left origin (Y down), 
-                    # but we want Y Up as positive (Standard 3D/Graph)
+                    # Normalize to -1..1 range roughly
+                    # Negate Y because window coords are Top-Left origin
                     self._input_state['mouse_delta'] = (dx / w * 2.0, -dy / h * 2.0)
                 else:
                     self._input_state['mouse_delta'] = (0.0, 0.0)

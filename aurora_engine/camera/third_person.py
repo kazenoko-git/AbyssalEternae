@@ -21,7 +21,6 @@ class ThirdPersonController(CameraController):
         self.input_manager = input_manager
 
         # Configuration
-        # Adjusted for better default view (assuming target transform is center of mass)
         self.target_height = 0.5  # Height offset on target (look at upper chest/head)
         self.distance = 9.0       # Default distance
         self.min_distance = 3.0
@@ -66,6 +65,7 @@ class ThirdPersonController(CameraController):
                 self.yaw -= mouse_delta[0] * self.sensitivity_x
                 self.pitch -= mouse_delta[1] * self.sensitivity_y
                 
+                # Clamp pitch strictly to prevent gimbal lock or flipping
                 self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
                 self.yaw = self.yaw % 360.0
                 
@@ -158,6 +158,8 @@ class ThirdPersonController(CameraController):
         up = np.array([0, 0, 1], dtype=np.float32)
         
         # Handle gimbal lock case (looking straight up/down)
+        # If we are looking nearly straight up or down, the cross product with Z-up becomes unstable.
+        # We switch to Y-up temporarily to maintain a valid right vector.
         if abs(np.dot(forward, up)) > 0.99:
             # Use Y as up if looking along Z
             up = np.array([0, 1, 0], dtype=np.float32)
