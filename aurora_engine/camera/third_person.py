@@ -21,22 +21,22 @@ class ThirdPersonController(CameraController):
         self.input_manager = input_manager
 
         # Configuration
-        self.target_height = 1.4  # Height offset on target (look at chest/head)
-        self.distance = 6.0
-        self.min_distance = 2.0
-        self.max_distance = 12.0
+        # Adjusted for better default view (assuming target transform is center of mass)
+        self.target_height = 0.5  # Height offset on target (look at upper chest/head)
+        self.distance = 9.0       # Default distance
+        self.min_distance = 3.0
+        self.max_distance = 18.0
         
         self.yaw = 0.0
-        self.pitch = 15.0
-        self.min_pitch = -60.0 # Look down (camera high)
-        self.max_pitch = 75.0  # Look up (camera low) - Limit to avoid ground clipping
+        self.pitch = 10.0         # Default pitch (slightly looking down)
+        self.min_pitch = -60.0    # Look down (camera high)
+        self.max_pitch = 75.0     # Look up (camera low)
         
         # Sensitivity
         self.sensitivity_x = 120.0 
         self.sensitivity_y = 120.0
         
         # Smoothing
-        # High values = snappier. Low values = smoother/laggier.
         self.rotation_smooth_speed = 25.0 
         self.follow_smooth_speed = 10.0
         self.zoom_smooth_speed = 10.0
@@ -44,7 +44,7 @@ class ThirdPersonController(CameraController):
         # Collision
         self.physics_world = None
         self.collision_radius = 0.2
-        self.collision_buffer = 0.2 # Distance to pull back from wall
+        self.collision_buffer = 0.5 # Increased buffer to keep camera away from walls
 
         # State
         self._current_distance = self.distance
@@ -61,23 +61,15 @@ class ThirdPersonController(CameraController):
         # Input
         if self.input_manager.mouse_locked:
             mouse_delta = self.input_manager.get_mouse_delta()
-            # mouse_delta is normalized (-1 to 1)
-            # InputManager returns +Y for Mouse Up.
             
             if abs(mouse_delta[0]) > 0.0001 or abs(mouse_delta[1]) > 0.0001:
-                # Yaw: Mouse Right -> dx > 0.
-                # We want View Right -> Camera Left (CCW).
-                # Yaw Decrease -> Camera Left.
                 self.yaw -= mouse_delta[0] * self.sensitivity_x
-                
-                # Pitch: Mouse Up -> dy > 0.
-                # We want Look Up -> Camera Low -> Pitch Decrease.
                 self.pitch -= mouse_delta[1] * self.sensitivity_y
                 
                 self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
                 self.yaw = self.yaw % 360.0
                 
-        # Zoom (Scroll) - TODO: Add scroll support to InputManager
+        # Zoom (Scroll) - Placeholder for scroll input
         # if self.input_manager.get_scroll_y() != 0:
         #     self.distance -= self.input_manager.get_scroll_y() * 2.0
         #     self.distance = np.clip(self.distance, self.min_distance, self.max_distance)
@@ -114,9 +106,6 @@ class ThirdPersonController(CameraController):
         sy = np.sin(y_rad)
         
         # Direction FROM Target TO Camera
-        # Yaw 0 = Looking +Y (Camera at -Y)
-        # Pitch 0 = Horizontal
-        # Pitch 90 = Camera directly above (looking down)
         dir_to_cam = np.array([
             sy * cp,
             -cy * cp,
