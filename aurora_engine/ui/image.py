@@ -14,9 +14,6 @@ class ImageWidget(Widget):
     Uses Panda3D's pixel2d for pixel-perfect positioning.
     """
     
-    # Static set to track missing images and prevent spam
-    _missing_images_logged = set()
-    
     def __init__(self, name: str, image_path: str):
         super().__init__(name)
         self.image_path = image_path
@@ -26,6 +23,7 @@ class ImageWidget(Widget):
         self.color = (1.0, 1.0, 1.0, 1.0) # Tint color
         self.rotation = 0.0 # Degrees
         self.z_index = 0 # Draw order
+        self._warning_logged = False
 
     def _load_resources(self):
         if self._loaded: return
@@ -34,9 +32,11 @@ class ImageWidget(Widget):
             try:
                 # Check if file exists first to avoid Panda3D screaming
                 if not os.path.exists(self.image_path):
-                    if self.image_path not in ImageWidget._missing_images_logged:
+                    if not self._warning_logged:
                         logger.warning(f"Image/Texture missing: {self.image_path}")
-                        ImageWidget._missing_images_logged.add(self.image_path)
+                        self._warning_logged = True
+                    # Mark as loaded to prevent retry loop every frame
+                    self._loaded = True
                     return 
 
                 # Load texture
@@ -57,10 +57,10 @@ class ImageWidget(Widget):
                 
                 self._loaded = True
             except Exception as e:
-                # Fallback for other errors
-                if self.image_path not in ImageWidget._missing_images_logged:
+                if not self._warning_logged:
                     logger.warning(f"Failed to load image {self.image_path}: {e}")
-                    ImageWidget._missing_images_logged.add(self.image_path)
+                    self._warning_logged = True
+                self._loaded = True # Stop retrying
 
     def _render_self(self):
         self._load_resources()
@@ -101,20 +101,20 @@ class ImageWidget(Widget):
             return
             
         self.image_path = image_path
+        self._warning_logged = False # Reset warning for new image
+        
         if self._node_path and hasattr(builtins, 'base'):
             try:
                 if not os.path.exists(self.image_path):
-                    if self.image_path not in ImageWidget._missing_images_logged:
-                        logger.warning(f"Image/Texture missing: {self.image_path}")
-                        ImageWidget._missing_images_logged.add(self.image_path)
+                    logger.warning(f"Image/Texture missing: {self.image_path}")
+                    self._warning_logged = True
                     return
 
                 self._texture = builtins.base.loader.loadTexture(self.image_path)
                 self._node_path.setTexture(self._texture, 1) # 1 = override
             except Exception as e:
-                if self.image_path not in ImageWidget._missing_images_logged:
-                    logger.warning(f"Failed to load image {self.image_path}: {e}")
-                    ImageWidget._missing_images_logged.add(self.image_path)
+                logger.warning(f"Failed to load image {self.image_path}: {e}")
+                self._warning_logged = True
 
     def destroy(self):
         """Cleanup resources."""

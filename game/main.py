@@ -452,31 +452,57 @@ class AbyssalEternae(Application):
                             cam_fwd_2d /= np.linalg.norm(cam_fwd_2d)
                             
                             dot = np.dot(to_chunk, cam_fwd_2d)
-                            # FOV ~90 degrees means dot > 0.707 (cos 45)
-                            # But we want a wider cone to avoid pop-in on rotation
-                            # Let's use dot > 0.0 (180 degree view) for safety, or -0.2 for 200 degrees
-                            # Or just render everything in radius for now to be safe as requested "according to player camera field of view"
-                            # User said: "Form a triangle / minor sector based on the Field of View"
                             
-                            # Let's be generous: 120 degree FOV = cos(60) = 0.5
-                            # Behind the player: dot < 0
-                            # Let's cull anything strictly behind (dot < -0.2) to allow some peripheral vision
-                            if dot < -0.2:
+                            # FOV Culling Logic:
+                            # dot < -0.5 means strictly behind (outside 240 degree cone)
+                            # BUT we want to keep 1-2 chunks behind the player rendered.
+                            
+                            # Calculate distance in chunks
+                            chunk_dist = dist / self.chunk_size
+                            
+                            # If chunk is very close (within 1-2 chunks), keep it regardless of FOV
+                            # This satisfies "Make one-two chunks behind the player render as well"
+                            if chunk_dist <= 1.5: # Keep immediate surroundings
+                                pass
+                            elif dot < -0.5: # Otherwise apply culling
                                 continue
                     
                     needed_chunks.add((x, y))
         
-        # 2. Unload distant chunks (Strict Unload)
-        # Any chunk not in needed_chunks MUST be unloaded immediately
-        chunks_to_unload = []
-        for coords in self.loaded_chunks:
-            if coords not in needed_chunks:
-                chunks_to_unload.append(coords)
-                
-        for coords in chunks_to_unload:
-            self._unload_chunk(coords)
+        # 2. Update Visibility (Don't Unload, just Hide)
+        # We iterate ALL loaded chunks.
+        # If in needed_chunks -> Ensure Visible
+        # If NOT in needed_chunks -> Ensure Hidden (but keep in memory)
+        
+        # Note: We still need to load new chunks if they are needed but not loaded.
+        
+        for coords, entities in self.loaded_chunks.items():
+            # If debug mode is active, render ALL loaded chunks
+            # FIX: Only force visibility if debug camera is active, otherwise respect needed_chunks
+            # The previous logic was: should_be_visible = coords in needed_chunks or self.debug_camera_active
+            # This meant if debug camera was active, EVERYTHING loaded was visible.
+            # But the user said "Using f3+f4 debug makes it so that ALL chunks render. Fix that."
+            # This implies they want to see the CULLING in action from the debug view.
             
+            # Correct Logic:
+            # We want to see exactly what the main camera sees (culled state) even in debug view.
+            # The debug camera is just an observer. It shouldn't change the game state.
+            should_be_visible = coords in needed_chunks
+            
+            for entity in entities:
+                # Toggle MeshRenderer visibility
+                mesh_renderer = entity.get_component(MeshRenderer)
+                if mesh_renderer:
+                    mesh_renderer.visible = should_be_visible
+                    # Force update backend node immediately
+                    if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
+                        if should_be_visible:
+                            mesh_renderer._node_path.show()
+                        else:
+                            mesh_renderer._node_path.hide()
+                            
         # 3. Load new chunks
+        # Only load if not already in loaded_chunks
         max_concurrent_loads = 8
         current_loads = len(self.pending_data) + len(self.pending_meshes)
         
@@ -514,10 +540,10 @@ class AbyssalEternae(Application):
         self.current_dimension_id = f"dim_main_{seed}"
         dim = self.world_generator.get_or_create_dimension(self.current_dimension_id, seed)
         logger.info(f"Entered Dimension: {dim['name']} (Seed: {seed})")
-
+        
         # Initial Load (Synchronous)
         logger.info("Loading initial area...")
-
+        
         # Load initial chunks synchronously to prevent falling through floor
         player_pos = self.player.get_component(Transform).get_world_position()
         current_chunk_x = int(player_pos[0] / self.chunk_size)
@@ -530,7 +556,7 @@ class AbyssalEternae(Application):
                     region = self.world_generator.generate_region(self.current_dimension_id, x, y)
                     meshes = generate_chunk_meshes(region)
                     self._instantiate_chunk(region, meshes, fade_in=False)
-
+            
         # Adjust Player Height
         center_region = self.world_generator.generate_region(self.current_dimension_id, 0, 0)
         if center_region:
@@ -540,10 +566,10 @@ class AbyssalEternae(Application):
     def _instantiate_chunk(self, region_data: Dict, meshes: Dict, fade_in: bool = True):
         """Create entities for a region using pre-generated meshes."""
         coords = (region_data['coordinates_x'], region_data['coordinates_y'])
-
+        
         if coords in self.loaded_chunks:
             return
-
+            
         chunk_entities = []
         
         # Props
@@ -551,16 +577,16 @@ class AbyssalEternae(Application):
             e = self.world.create_entity()
             t = e.add_component(Transform())
             t.set_world_position(np.array([entity_data['x'], entity_data['y'], entity_data['z']], dtype=np.float32))
-
+            
             # Visuals
             # Check if model_path is present (for buildings)
             if 'model_path' in entity_data:
                 e.add_component(MeshRenderer(model_path=entity_data['model_path']))
             else:
                 e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
-
+                
             if fade_in: e.add_component(FadeInEffect(duration=0.5))
-
+            
             # Colliders
             if entity_data['type'] == 'prop':
                 if entity_data['model'] == 'rock':
@@ -570,28 +596,28 @@ class AbyssalEternae(Application):
                     e.add_component(Collider(BoxCollider(np.array([0.5 * scale, 0.5 * scale, 4.0 * scale], dtype=np.float32))))
             elif entity_data['type'] == 'structure':
                 e.add_component(Collider(BoxCollider(np.array([4.0, 3.0, 3.0], dtype=np.float32))))
-
+            
             # Add StaticBody for props/structures
             e.add_component(StaticBody())
-
+            
             chunk_entities.append(e)
-
+                
         # Terrain
         if meshes['terrain']:
             ground = self.world.create_entity()
             gt = ground.add_component(Transform())
-
+            
             rx = region_data['coordinates_x'] * 100.0
             ry = region_data['coordinates_y'] * 100.0
             gt.set_world_position(np.array([rx, ry, 0], dtype=np.float32))
-
+            
             ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
             if fade_in: ground.add_component(FadeInEffect(duration=0.5))
-
+            
             # Add StaticBody and MeshCollider for terrain
             ground.add_component(StaticBody())
             ground.add_component(Collider(MeshCollider(meshes['terrain'], convex=False)))
-
+            
             chunk_entities.append(ground)
             
         # Water Plane
@@ -601,12 +627,12 @@ class AbyssalEternae(Application):
         ry = region_data['coordinates_y'] * 100.0
         wt.set_world_position(np.array([rx + 50.0, ry + 50.0, -2.0], dtype=np.float32))
         wt.local_scale = np.array([100.0, 100.0, 1.0], dtype=np.float32)
-
+        
         water_mesh = create_plane_mesh(1.0, 1.0)
         water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
         water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
         if fade_in: water.add_component(FadeInEffect(duration=0.5))
-
+        
         # Add StaticBody for water
         water.add_component(StaticBody())
         
