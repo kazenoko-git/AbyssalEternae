@@ -4,6 +4,7 @@ from aurora_engine.ui.widget import Widget
 from aurora_engine.core.logging import get_logger
 from panda3d.core import NodePath, Texture, CardMaker, TransparencyAttrib, Vec4
 import builtins
+import os
 
 logger = get_logger()
 
@@ -12,6 +13,9 @@ class ImageWidget(Widget):
     Widget that renders a 2D image (PNG/JPG).
     Uses Panda3D's pixel2d for pixel-perfect positioning.
     """
+    
+    # Static set to track missing images and prevent spam
+    _missing_images_logged = set()
     
     def __init__(self, name: str, image_path: str):
         super().__init__(name)
@@ -28,6 +32,13 @@ class ImageWidget(Widget):
         
         if hasattr(builtins, 'base'):
             try:
+                # Check if file exists first to avoid Panda3D screaming
+                if not os.path.exists(self.image_path):
+                    if self.image_path not in ImageWidget._missing_images_logged:
+                        logger.warning(f"Image/Texture missing: {self.image_path}")
+                        ImageWidget._missing_images_logged.add(self.image_path)
+                    return 
+
                 # Load texture
                 self._texture = builtins.base.loader.loadTexture(self.image_path)
                 
@@ -46,7 +57,10 @@ class ImageWidget(Widget):
                 
                 self._loaded = True
             except Exception as e:
-                logger.error(f"Failed to load image {self.image_path}: {e}")
+                # Fallback for other errors
+                if self.image_path not in ImageWidget._missing_images_logged:
+                    logger.warning(f"Failed to load image {self.image_path}: {e}")
+                    ImageWidget._missing_images_logged.add(self.image_path)
 
     def _render_self(self):
         self._load_resources()
@@ -89,10 +103,18 @@ class ImageWidget(Widget):
         self.image_path = image_path
         if self._node_path and hasattr(builtins, 'base'):
             try:
+                if not os.path.exists(self.image_path):
+                    if self.image_path not in ImageWidget._missing_images_logged:
+                        logger.warning(f"Image/Texture missing: {self.image_path}")
+                        ImageWidget._missing_images_logged.add(self.image_path)
+                    return
+
                 self._texture = builtins.base.loader.loadTexture(self.image_path)
                 self._node_path.setTexture(self._texture, 1) # 1 = override
             except Exception as e:
-                logger.error(f"Failed to load image {self.image_path}: {e}")
+                if self.image_path not in ImageWidget._missing_images_logged:
+                    logger.warning(f"Failed to load image {self.image_path}: {e}")
+                    ImageWidget._missing_images_logged.add(self.image_path)
 
     def destroy(self):
         """Cleanup resources."""

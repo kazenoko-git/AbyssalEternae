@@ -130,8 +130,11 @@ class AbyssalEternae(Application):
 
         # Render Radius Configuration
         self.chunk_size = 100.0
-        self.render_radius_chunks = 6 # 6 chunks radius
+        self.render_radius_chunks = 4 # Reduced to 4 as requested
         self.render_radius_world = self.render_radius_chunks * self.chunk_size
+        
+        # Compatibility alias for load_radius
+        self.load_radius = self.render_radius_chunks
         
         # Fog Radius (Must be smaller than render radius by at least 1 chunk)
         self.fog_radius = (self.render_radius_chunks - 1) * self.chunk_size
@@ -416,15 +419,51 @@ class AbyssalEternae(Application):
         current_chunk_x = int(player_pos[0] / self.chunk_size)
         current_chunk_y = int(player_pos[1] / self.chunk_size)
         
-        # 1. Determine needed chunks (Circular Radius)
+        # 1. Determine needed chunks (Circular Radius + FOV Culling)
         needed_chunks = set()
         radius = self.render_radius_chunks
+        
+        # Get Camera Forward Vector for FOV culling
+        cam_transform = self.main_camera.transform
+        cam_fwd = cam_transform.forward
+        cam_pos = cam_transform.get_world_position()
         
         # Iterate bounding box of circle
         for x in range(current_chunk_x - radius, current_chunk_x + radius + 1):
             for y in range(current_chunk_y - radius, current_chunk_y + radius + 1):
+                # Chunk center position
+                chunk_center_x = x * self.chunk_size + self.chunk_size / 2
+                chunk_center_y = y * self.chunk_size + self.chunk_size / 2
+                
+                # Vector to chunk
+                to_chunk = np.array([chunk_center_x - cam_pos[0], chunk_center_y - cam_pos[1], 0.0], dtype=np.float32)
+                dist_sq = to_chunk[0]**2 + to_chunk[1]**2
+                
                 # Check circular distance
-                if (x - current_chunk_x)**2 + (y - current_chunk_y)**2 <= radius**2:
+                if dist_sq <= (radius * self.chunk_size)**2:
+                    # FOV Check (Dot Product)
+                    # Normalize to_chunk
+                    dist = np.sqrt(dist_sq)
+                    if dist > 0.1: # Skip current chunk (always render)
+                        to_chunk /= dist
+                        # Project cam_fwd to 2D
+                        cam_fwd_2d = np.array([cam_fwd[0], cam_fwd[1], 0.0], dtype=np.float32)
+                        if np.linalg.norm(cam_fwd_2d) > 0.01:
+                            cam_fwd_2d /= np.linalg.norm(cam_fwd_2d)
+                            
+                            dot = np.dot(to_chunk, cam_fwd_2d)
+                            # FOV ~90 degrees means dot > 0.707 (cos 45)
+                            # But we want a wider cone to avoid pop-in on rotation
+                            # Let's use dot > 0.0 (180 degree view) for safety, or -0.2 for 200 degrees
+                            # Or just render everything in radius for now to be safe as requested "according to player camera field of view"
+                            # User said: "Form a triangle / minor sector based on the Field of View"
+                            
+                            # Let's be generous: 120 degree FOV = cos(60) = 0.5
+                            # Behind the player: dot < 0
+                            # Let's cull anything strictly behind (dot < -0.2) to allow some peripheral vision
+                            if dot < -0.2:
+                                continue
+                    
                     needed_chunks.add((x, y))
         
         # 2. Unload distant chunks (Strict Unload)
@@ -475,10 +514,10 @@ class AbyssalEternae(Application):
         self.current_dimension_id = f"dim_main_{seed}"
         dim = self.world_generator.get_or_create_dimension(self.current_dimension_id, seed)
         logger.info(f"Entered Dimension: {dim['name']} (Seed: {seed})")
-        
+
         # Initial Load (Synchronous)
         logger.info("Loading initial area...")
-        
+
         # Load initial chunks synchronously to prevent falling through floor
         player_pos = self.player.get_component(Transform).get_world_position()
         current_chunk_x = int(player_pos[0] / self.chunk_size)
@@ -491,7 +530,7 @@ class AbyssalEternae(Application):
                     region = self.world_generator.generate_region(self.current_dimension_id, x, y)
                     meshes = generate_chunk_meshes(region)
                     self._instantiate_chunk(region, meshes, fade_in=False)
-            
+
         # Adjust Player Height
         center_region = self.world_generator.generate_region(self.current_dimension_id, 0, 0)
         if center_region:
@@ -501,10 +540,10 @@ class AbyssalEternae(Application):
     def _instantiate_chunk(self, region_data: Dict, meshes: Dict, fade_in: bool = True):
         """Create entities for a region using pre-generated meshes."""
         coords = (region_data['coordinates_x'], region_data['coordinates_y'])
-        
+
         if coords in self.loaded_chunks:
             return
-            
+
         chunk_entities = []
         
         # Props
@@ -512,16 +551,16 @@ class AbyssalEternae(Application):
             e = self.world.create_entity()
             t = e.add_component(Transform())
             t.set_world_position(np.array([entity_data['x'], entity_data['y'], entity_data['z']], dtype=np.float32))
-            
+
             # Visuals
             # Check if model_path is present (for buildings)
             if 'model_path' in entity_data:
                 e.add_component(MeshRenderer(model_path=entity_data['model_path']))
             else:
                 e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
-                
+
             if fade_in: e.add_component(FadeInEffect(duration=0.5))
-            
+
             # Colliders
             if entity_data['type'] == 'prop':
                 if entity_data['model'] == 'rock':
@@ -531,28 +570,28 @@ class AbyssalEternae(Application):
                     e.add_component(Collider(BoxCollider(np.array([0.5 * scale, 0.5 * scale, 4.0 * scale], dtype=np.float32))))
             elif entity_data['type'] == 'structure':
                 e.add_component(Collider(BoxCollider(np.array([4.0, 3.0, 3.0], dtype=np.float32))))
-            
+
             # Add StaticBody for props/structures
             e.add_component(StaticBody())
-            
+
             chunk_entities.append(e)
-                
+
         # Terrain
         if meshes['terrain']:
             ground = self.world.create_entity()
             gt = ground.add_component(Transform())
-            
+
             rx = region_data['coordinates_x'] * 100.0
             ry = region_data['coordinates_y'] * 100.0
             gt.set_world_position(np.array([rx, ry, 0], dtype=np.float32))
-            
+
             ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
             if fade_in: ground.add_component(FadeInEffect(duration=0.5))
-            
+
             # Add StaticBody and MeshCollider for terrain
             ground.add_component(StaticBody())
             ground.add_component(Collider(MeshCollider(meshes['terrain'], convex=False)))
-            
+
             chunk_entities.append(ground)
             
         # Water Plane
@@ -562,19 +601,19 @@ class AbyssalEternae(Application):
         ry = region_data['coordinates_y'] * 100.0
         wt.set_world_position(np.array([rx + 50.0, ry + 50.0, -2.0], dtype=np.float32))
         wt.local_scale = np.array([100.0, 100.0, 1.0], dtype=np.float32)
-        
+
         water_mesh = create_plane_mesh(1.0, 1.0)
         water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
         water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
         if fade_in: water.add_component(FadeInEffect(duration=0.5))
-        
+
         # Add StaticBody for water
         water.add_component(StaticBody())
         
         chunk_entities.append(water)
         
         self.loaded_chunks[coords] = chunk_entities
-    
+
     def shutdown(self):
         """Cleanup."""
         super().shutdown()
