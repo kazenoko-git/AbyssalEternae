@@ -214,5 +214,20 @@ __marimo__/
 *.sf2
 .sf2
 
+# image formats
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# model files
+*.glb
+*.gltf
+*.obj
+*.fbx
+*.stl
+
 # MacOS bs
 .DS_Store
+
+*.bin

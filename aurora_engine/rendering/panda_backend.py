@@ -6,6 +6,7 @@ from aurora_engine.rendering.mesh import Mesh
 import weakref
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
+import os
 
 logger = get_logger()
 
@@ -33,6 +34,7 @@ class PandaBackend:
             window-title {self.config.get('title', 'Aurora Engine')}
             framebuffer-multisample 1
             multisamples 4
+            gl-coordinate-system default
         """)
 
         # Create window
@@ -54,6 +56,36 @@ class PandaBackend:
         
         # Set Clear Color to Sky Blue
         self.base.setBackgroundColor(0.53, 0.8, 0.92, 1)
+        
+        # Ensure current directory is in model path
+        getModelPath().appendDirectory(os.getcwd())
+        
+        # Register gltf loader
+        # Try importing panda3d-gltf simplepbr way or just simplepbr if available
+        has_simplepbr = False
+        try:
+            import simplepbr
+            # simplepbr.init() automatically patches the loader
+            simplepbr.init()
+            has_simplepbr = True
+            logger.info("Initialized simplepbr")
+        except ImportError:
+            logger.warning("simplepbr not found. PBR materials might not look correct.")
+
+        # Try patching loader for GLTF if simplepbr didn't do it (or just to be safe/explicit)
+        # But avoid double patching if simplepbr already did it
+        if not has_simplepbr:
+            try:
+                import gltf
+                # Check if patch_loader exists (newer versions)
+                if hasattr(gltf, 'patch_loader'):
+                    gltf.patch_loader(self.base.loader)
+                    logger.info("Patched loader with panda3d-gltf")
+                else:
+                    pass
+            except ImportError:
+                logger.warning("panda3d-gltf not found. GLB models will not load.")
+
         logger.info("Panda3D initialized")
 
     def clear_buffers(self):

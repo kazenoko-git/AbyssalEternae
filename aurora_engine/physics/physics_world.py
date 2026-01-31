@@ -99,7 +99,8 @@ class PhysicsWorld:
             
         # Lock rotation if needed
         if body.lock_rotation:
-            node.setAngularFactor(Vec3(0, 0, 1)) # Allow Z rotation only
+            node.setAngularFactor(Vec3(0, 0, 0)) # Lock ALL rotation axes for physics
+            # We handle Y-rotation (Yaw) manually in PlayerSystem
             
         # Add to world
         self._bullet_world.attachRigidBody(node)
@@ -202,7 +203,10 @@ class PhysicsWorld:
                     transform.set_world_position(np.array([pos.x, pos.y, pos.z], dtype=np.float32))
                     
                     # Update rotation [x, y, z, w]
-                    transform.set_world_rotation(np.array([quat.getI(), quat.getJ(), quat.getK(), quat.getR()], dtype=np.float32))
+                    # If rotation is locked, we might want to preserve the manual rotation set by PlayerSystem
+                    # instead of overwriting it with physics rotation (which should be locked anyway)
+                    if not body.lock_rotation:
+                        transform.set_world_rotation(np.array([quat.getI(), quat.getJ(), quat.getK(), quat.getR()], dtype=np.float32))
                     
             # Update velocity in component for reference
             vel = body._bullet_body.getLinearVelocity()

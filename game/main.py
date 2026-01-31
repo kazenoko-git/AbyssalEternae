@@ -73,9 +73,9 @@ class AbyssalEternae(Application):
         # Initial position will be adjusted after terrain load
         player_transform.set_world_position(np.array([0, 0, 10.0], dtype=np.float32))
 
-        # Add player visual (Capsule)
-        player_mesh = create_capsule_mesh(radius=0.5, height=2.0)
-        self.player.add_component(MeshRenderer(mesh=player_mesh, color=(0.2, 0.4, 0.8, 1.0)))
+        # Add player visual (MC.glb)
+        # Use model_path instead of mesh for GLB loading
+        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.gltf"))
         
         # Add player physics
         self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))
@@ -184,7 +184,10 @@ class AbyssalEternae(Application):
         # Exponential fog density based on radius
         # Visibility ~ 3 / density
         # density = 3 / fog_radius
-        density = 3.0 / self.fog_radius
+        # Reduced density significantly as requested ("fog is way too high")
+        # Old: 3.0 / self.fog_radius
+        # New: 1.0 / self.fog_radius (3x less dense)
+        density = 1.0 / self.fog_radius
         fog.setExpDensity(density) 
         
         if hasattr(self.renderer.backend, 'scene_graph'):
@@ -657,7 +660,7 @@ if __name__ == "__main__":
         'database': {
             'host': 'localhost',
             'user': 'root',
-            'password': 'CeneX_1234', # Set your MySQL password here
+            'password': 'Yippee_12345', # Set your MySQL password here
             'database': 'abyssal_eternae_db',
             'port': 3306
         }

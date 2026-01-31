@@ -132,4 +132,26 @@ class PlayerSystem(System):
                 t = min(dt * self.rotation_speed, 1.0)
                 new_quat = quaternion_slerp(current_quat, target_quat, t)
                 
-                transform.local_rotation = new_quat
+                # Force upright constraint on new rotation
+                # This prevents the "continuous rotation" or tilting issue during movement
+                # We only want rotation around Z (Yaw)
+                # Extract Yaw from new_quat
+                # q = [x, y, z, w]
+                # If we assume upright, x and y should be 0.
+                # We can just zero them out and re-normalize.
+                
+                upright_quat = np.array([0.0, 0.0, new_quat[2], new_quat[3]], dtype=np.float32)
+                norm = np.linalg.norm(upright_quat)
+                if norm > 0.001:
+                    upright_quat /= norm
+                    transform.local_rotation = upright_quat
+                else:
+                    transform.local_rotation = new_quat
+            else:
+                # Force upright rotation when idle to prevent physics drift
+                current_quat = transform.local_rotation
+                upright_quat = np.array([0.0, 0.0, current_quat[2], current_quat[3]], dtype=np.float32)
+                norm = np.linalg.norm(upright_quat)
+                if norm > 0.001:
+                    upright_quat /= norm
+                    transform.local_rotation = upright_quat

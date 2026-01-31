@@ -9,7 +9,8 @@ from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
-from panda3d.core import Vec4, BillboardEffect
+from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath
+import os
 
 
 class Renderer:
@@ -131,9 +132,55 @@ class Renderer:
                 # Load model from file
                 # Use Panda3D loader directly for now
                 try:
-                    # Assuming assets are in a known location or path is relative to main
-                    # For placeholder, we might need to handle missing files
-                    mesh_renderer._node_path = self.backend.base.loader.loadModel(mesh_renderer.model_path)
+                    model_path = mesh_renderer.model_path
+                    
+                    # If relative path, try to resolve it against CWD and parent dirs
+                    if not os.path.isabs(model_path):
+                        # 1. Try current directory
+                        if os.path.exists(model_path):
+                            model_path = os.path.abspath(model_path)
+                        # 2. Try one level up (Project Root if running from game/)
+                        elif os.path.exists(os.path.join("..", model_path)):
+                            model_path = os.path.abspath(os.path.join("..", model_path))
+                        # 3. Try two levels up just in case
+                        elif os.path.exists(os.path.join("../..", model_path)):
+                            model_path = os.path.abspath(os.path.join("../..", model_path))
+                        else:
+                            # Default to abspath if not found, maybe Panda loader can find it via Config path
+                            model_path = os.path.abspath(model_path)
+                    
+                    # Add directory to model path so textures can be found
+                    # Use global getModelPath() instead of loader instance method
+                    model_dir = os.path.dirname(model_path)
+                    getModelPath().appendDirectory(model_dir)
+                    
+                    # Convert to Panda3D style path (forward slashes)
+                    model_path = model_path.replace('\\', '/')
+                    
+                    mesh_renderer._node_path = self.backend.base.loader.loadModel(model_path)
+                    
+                    # Fix for massive FBX models: Normalize scale
+                    # FBX often comes in with units like cm instead of meters (100x scale)
+                    if model_path.lower().endswith('.fbx'):
+                        # Get bounds to estimate size
+                        min_pt, max_pt = mesh_renderer._node_path.getTightBounds()
+                        size = max_pt - min_pt
+                        max_dim = max(size.getX(), size.getY(), size.getZ())
+                        
+                        # If character is huge (e.g. > 10 units tall), scale it down
+                        # Assuming a character should be roughly 2 units tall (meters)
+                        if max_dim > 10.0:
+                            scale_factor = 2.0 / max_dim
+                            mesh_renderer._node_path.setScale(scale_factor)
+                            mesh_renderer._node_path.flattenLight() # Bake scale
+                            self.logger.info(f"Auto-scaled massive FBX model by {scale_factor:.4f}")
+                        elif max_dim < 0.1 and max_dim > 0:
+                            # Too small? Scale up
+                            scale_factor = 2.0 / max_dim
+                            mesh_renderer._node_path.setScale(scale_factor)
+                            mesh_renderer._node_path.flattenLight()
+                            self.logger.info(f"Auto-scaled tiny FBX model by {scale_factor:.4f}")
+
                 except Exception as e:
                     self.logger.warning(f"Failed to load model {mesh_renderer.model_path}: {e}")
                     # Fallback to cube
@@ -146,7 +193,18 @@ class Renderer:
                 # Apply texture if provided
                 if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
                     try:
-                        tex = self.backend.base.loader.loadTexture(mesh_renderer.texture_path)
+                        # Resolve texture path similarly
+                        tex_path = mesh_renderer.texture_path
+                        if not os.path.isabs(tex_path):
+                            if os.path.exists(tex_path):
+                                tex_path = os.path.abspath(tex_path)
+                            elif os.path.exists(os.path.join("..", tex_path)):
+                                tex_path = os.path.abspath(os.path.join("..", tex_path))
+                            elif os.path.exists(os.path.join("../..", tex_path)):
+                                tex_path = os.path.abspath(os.path.join("../..", tex_path))
+                        
+                        tex_path = tex_path.replace('\\', '/')
+                        tex = self.backend.base.loader.loadTexture(tex_path)
                         mesh_renderer._node_path.setTexture(tex, 1)
                         mesh_renderer._node_path.setTransparency(True) # Enable transparency for PNGs
                     except Exception as e:
