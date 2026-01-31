@@ -12,7 +12,6 @@ from aurora_engine.utils.profiler import profile_section
 from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3
 import os
 
-
 class Renderer:
     """
     Central rendering coordinator.
@@ -130,7 +129,6 @@ class Renderer:
                 mesh_renderer._node_path = self.backend.create_mesh_node(mesh_renderer.mesh)
             elif hasattr(mesh_renderer, 'model_path') and mesh_renderer.model_path:
                 # Load model from file
-                # Use Panda3D loader directly for now
                 try:
                     model_path = mesh_renderer.model_path
                     
@@ -157,7 +155,18 @@ class Renderer:
                     # Convert to Panda3D style path (forward slashes)
                     model_path = model_path.replace('\\', '/')
                     
-                    mesh_renderer._node_path = self.backend.base.loader.loadModel(model_path)
+                    # --- CUSTOM GLTF LOADER INTEGRATION ---
+                    if model_path.lower().endswith('.glb') or model_path.lower().endswith('.gltf'):
+                        try:
+                            # Import inside function to avoid circular imports or early import errors
+                            from aurora_engine.utils.gltf_loader import load_gltf_fixed
+                            mesh_renderer._node_path = load_gltf_fixed(self.backend.base.loader, model_path)
+                            self.logger.info(f"Loaded GLTF model via custom loader: {model_path}")
+                        except Exception as e:
+                            self.logger.warning(f"Custom GLTF loader failed: {e}. Falling back to standard loader.")
+                            mesh_renderer._node_path = self.backend.base.loader.loadModel(model_path)
+                    else:
+                        mesh_renderer._node_path = self.backend.base.loader.loadModel(model_path)
                     
                     # Fix for massive FBX models: Normalize scale and Center
                     if model_path.lower().endswith('.fbx'):

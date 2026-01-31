@@ -195,6 +195,23 @@ class PandaBackend:
                 else:
                     logger.info("gltf._loader.GltfConverter is the same class object.")
 
+            # Patch 4: Iterate through sys.modules to find ANY loaded GltfConverter
+            # This is the nuclear option for when imports are messy
+            for module_name, module in list(sys.modules.items()):
+                if hasattr(module, 'GltfConverter'):
+                    cls = getattr(module, 'GltfConverter')
+                    if cls is not TargetClass and cls is not getattr(gltf._loader, 'GltfConverter', None):
+                        logger.info(f"Found another GltfConverter in {module_name}. Patching it.")
+                        if not getattr(cls, '_is_patched_by_aurora_update', False):
+                            cls._original_update = cls.update
+                            cls.update = patched_update
+                            cls._is_patched_by_aurora_update = True
+                        
+                        if not getattr(cls, '_is_patched_by_aurora_prim', False):
+                            cls._original_load_primitive = cls.load_primitive
+                            cls.load_primitive = patched_load_primitive
+                            cls._is_patched_by_aurora_prim = True
+
         except ImportError as e:
             logger.warning(f"Could not import gltf module for patching: {e}")
         except Exception as e:
