@@ -10,7 +10,7 @@ class FadeInEffect(Component):
     Component to handle fading in of entities.
     """
 
-    def __init__(self, duration: float = 1.0):
+    def __init__(self, duration: float = 0.5):
         super().__init__()
         self.duration = duration
         self.elapsed = 0.0

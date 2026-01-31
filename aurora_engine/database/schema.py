@@ -171,21 +171,24 @@ class DatabaseSchema:
             """)
 
             # Indexes
-            try:
-                db_manager.execute("CREATE INDEX idx_npc_memory_npc ON npc_memory(npc_id)")
-            except: pass
+            # Use IF NOT EXISTS for indexes if supported by MySQL version, or catch errors
+            # MySQL 8.0+ supports IF NOT EXISTS for indexes, but older versions don't.
+            # Safest way is to catch the specific error code for duplicate key name (1061).
             
-            try:
-                db_manager.execute("CREATE INDEX idx_dialogue_npc ON dialogue_history(npc_id)")
-            except: pass
-            
-            try:
-                db_manager.execute("CREATE INDEX idx_ai_cache_lookup ON ai_cache(content_type, prompt_hash)")
-            except: pass
-            
-            try:
-                db_manager.execute("CREATE INDEX idx_regions_lookup ON regions(dimension_id, coordinates_x, coordinates_y)")
-            except: pass
+            def create_index_safe(query):
+                try:
+                    db_manager.execute(query)
+                except Exception as e:
+                    # Check for "Duplicate key name" error
+                    if "Duplicate key name" in str(e) or "1061" in str(e):
+                        pass # Index already exists
+                    else:
+                        logger.warning(f"Failed to create index: {e}")
+
+            create_index_safe("CREATE INDEX idx_npc_memory_npc ON npc_memory(npc_id)")
+            create_index_safe("CREATE INDEX idx_dialogue_npc ON dialogue_history(npc_id)")
+            create_index_safe("CREATE INDEX idx_ai_cache_lookup ON ai_cache(content_type, prompt_hash)")
+            create_index_safe("CREATE INDEX idx_regions_lookup ON regions(dimension_id, coordinates_x, coordinates_y)")
 
             db_manager.commit()
             logger.info("Database tables created/verified")

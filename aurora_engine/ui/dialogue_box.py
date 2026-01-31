@@ -33,7 +33,7 @@ class DialogueBox(Panel):
         # Text animation
         self.full_text = ""
         self.displayed_text = ""
-        self.text_speed = 30.0  # Characters per second
+        self.text_speed = 60.0  # Characters per second
         self.text_progress = 0.0
 
         # Choices

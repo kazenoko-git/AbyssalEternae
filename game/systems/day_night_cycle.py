@@ -15,7 +15,7 @@ class DayNightCycle(System):
     Manages the day/night cycle, including sun/moon movement and lighting/sky color changes.
     """
 
-    def __init__(self, renderer, day_duration: float = 60.0):
+    def __init__(self, renderer, day_duration: float = 30.0):
         super().__init__()
         self.renderer = renderer
         self.day_duration = day_duration # Seconds for a full day

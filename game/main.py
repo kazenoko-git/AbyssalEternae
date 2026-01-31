@@ -160,7 +160,7 @@ class Rifted(Application):
         
         # Chunk Management
         self.last_chunk_check += dt
-        if self.last_chunk_check > 0.5:
+        if self.last_chunk_check > 1.0: # Increased from 0.25 to 1.0 to reduce lag
             self._manage_chunks()
             self.last_chunk_check = 0.0
         
@@ -306,7 +306,7 @@ class Rifted(Application):
             else:
                 e.add_component(MeshRenderer(mesh=mesh, color=(1.0, 1.0, 1.0, 1.0)))
                 
-            if fade_in: e.add_component(FadeInEffect(duration=1.5))
+            if fade_in: e.add_component(FadeInEffect(duration=0.5))
             
             # Colliders
             if entity_data['type'] == 'prop':
@@ -333,7 +333,7 @@ class Rifted(Application):
             gt.set_world_position(np.array([rx, ry, 0], dtype=np.float32))
             
             ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
-            if fade_in: ground.add_component(FadeInEffect(duration=1.5))
+            if fade_in: ground.add_component(FadeInEffect(duration=0.5))
             
             # Add StaticBody and MeshCollider for terrain
             ground.add_component(StaticBody())
@@ -352,7 +352,7 @@ class Rifted(Application):
         water_mesh = create_plane_mesh(1.0, 1.0)
         water.add_component(MeshRenderer(mesh=water_mesh, color=(0.2, 0.4, 0.8, 0.8)))
         water.add_component(Collider(BoxCollider(np.array([100.0, 100.0, 1.0], dtype=np.float32))))
-        if fade_in: water.add_component(FadeInEffect(duration=1.5))
+        if fade_in: water.add_component(FadeInEffect(duration=0.5))
         
         # Add StaticBody for water
         water.add_component(StaticBody())

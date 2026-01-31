@@ -22,7 +22,7 @@ class InputBuffer:
     Critical for fighting games and action games.
     """
 
-    def __init__(self, buffer_duration: float = 0.2):
+    def __init__(self, buffer_duration: float = 0.1):
         self.buffer_duration = buffer_duration
         self.events: Deque[InputEvent] = deque()
 
@@ -56,7 +56,7 @@ class InputBuffer:
 
         return True
 
-    def was_pressed_recently(self, action: str, time_window: float = 0.1) -> bool:
+    def was_pressed_recently(self, action: str, time_window: float = 0.05) -> bool:
         """
         Check if action was pressed within time window.
         Implements "input forgiveness".

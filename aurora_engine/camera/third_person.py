@@ -32,13 +32,15 @@ class ThirdPersonController(CameraController):
         self.max_pitch = 70.0     # Look up (camera low)
         
         # Sensitivity
-        self.sensitivity_x = 120.0 
-        self.sensitivity_y = 120.0
+        self.sensitivity_x = 150.0 
+        self.sensitivity_y = 150.0
         
         # Smoothing
-        self.rotation_smooth_speed = 25.0 
-        self.follow_smooth_speed = 10.0
-        self.zoom_smooth_speed = 10.0
+        # Using exponential smoothing, these values represent "speed" of convergence.
+        # Lower = smoother/heavier. Higher = snappier.
+        self.rotation_smooth_speed = 15.0 
+        self.follow_smooth_speed = 8.0
+        self.zoom_smooth_speed = 8.0
         
         # Collision
         self.physics_world = None
@@ -91,9 +93,13 @@ class ThirdPersonController(CameraController):
             self._current_distance = self.distance
             t_rot = 1.0
             t_pos = 1.0
+            t_dist = 1.0
         else:
-            t_rot = min(dt * self.rotation_smooth_speed, 1.0)
-            t_pos = min(dt * self.follow_smooth_speed, 1.0)
+            # Exponential smoothing for consistent fluidity across frame rates
+            # t = 1 - e^(-speed * dt)
+            t_rot = 1.0 - np.exp(-self.rotation_smooth_speed * dt)
+            t_pos = 1.0 - np.exp(-self.follow_smooth_speed * dt)
+            t_dist = 1.0 - np.exp(-self.zoom_smooth_speed * dt)
             
             self._current_yaw = self._lerp_angle(self._current_yaw, self.yaw, t_rot)
             self._current_pitch = self._lerp(self._current_pitch, self.pitch, t_rot)
@@ -136,7 +142,6 @@ class ThirdPersonController(CameraController):
         if snap:
             self._current_distance = final_distance
         else:
-            t_dist = min(dt * self.zoom_smooth_speed, 1.0)
             self._current_distance = self._lerp(self._current_distance, final_distance, t_dist)
         
         # Final Position

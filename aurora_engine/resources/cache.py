@@ -15,7 +15,7 @@ class ResourceCache:
         self._resources: Dict[str, Any] = {}
         self._ref_counts: Dict[str, int] = {}
         self._timestamps: Dict[str, float] = {}
-        self.default_ttl = 60.0  # Time to live in seconds for unused resources
+        self.default_ttl = 30.0  # Time to live in seconds for unused resources
         # logger.debug("ResourceCache initialized")
 
     def get(self, key: str) -> Optional[Any]:
