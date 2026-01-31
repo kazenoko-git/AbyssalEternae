@@ -19,6 +19,9 @@ class World:
         self.systems: List[System] = []
         self._component_cache: Dict[Type[Component], List[Entity]] = {}
         self.logger = get_logger()
+        
+        # Systems that need to be notified of entity destruction
+        self._physics_systems = []
 
     def create_entity(self) -> Entity:
         """Create a new entity."""
@@ -30,6 +33,24 @@ class World:
     def destroy_entity(self, entity: Entity):
         """Remove an entity from the world."""
         if entity in self.entities:
+            # Notify physics systems to remove bodies
+            # This is a bit of a hack, ideally we'd use an event bus
+            from aurora_engine.physics.rigidbody import RigidBody, StaticBody
+            
+            rb = entity.get_component(RigidBody)
+            sb = entity.get_component(StaticBody)
+            
+            if rb or sb:
+                # Find physics system
+                # We can't easily find the specific system instance here without a reference
+                # But the PhysicsWorld handles removal if we call remove_body
+                # The issue is we need access to the PhysicsWorld instance.
+                # Let's rely on the component's on_destroy if possible, OR
+                # iterate systems and call a method if it exists.
+                for system in self.systems:
+                    if hasattr(system, 'on_entity_destroyed'):
+                        system.on_entity_destroyed(entity)
+
             # Clean up components
             for component in entity.components.values():
                 if hasattr(component, 'on_destroy'):
@@ -40,6 +61,14 @@ class World:
                 
                 # Break circular reference
                 component.entity = None
+                
+            # Clean up MeshRenderer NodePath explicitly
+            # This is crucial for Panda3D to remove the visual node
+            from aurora_engine.rendering.mesh import MeshRenderer
+            mesh_renderer = entity.get_component(MeshRenderer)
+            if mesh_renderer and hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
+                mesh_renderer._node_path.removeNode()
+                mesh_renderer._node_path = None
 
             entity.components.clear()
             self.entities.remove(entity)

@@ -27,6 +27,7 @@ import json
 import os
 import time
 import random
+import math
 from typing import Dict, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 
@@ -91,13 +92,13 @@ class AbyssalEternae(Application):
         from aurora_engine.camera.camera import Camera
         from aurora_engine.camera.third_person import ThirdPersonController
 
-        camera = Camera()
+        self.main_camera = Camera()
         # Pass input manager to controller
-        self.camera_controller = ThirdPersonController(camera, player_transform, self.input)
+        self.camera_controller = ThirdPersonController(self.main_camera, player_transform, self.input)
         # Inject physics world for collision
         self.camera_controller.physics_world = self.physics
 
-        self.renderer.register_camera(camera)
+        self.renderer.register_camera(self.main_camera)
         
         # Lock mouse for camera control
         self.input.set_mouse_lock(True)
@@ -105,7 +106,7 @@ class AbyssalEternae(Application):
         # Add game systems
         player_system = PlayerSystem(self.input)
         # Inject camera transform into player system for camera-relative movement
-        player_system.camera_transform = camera.transform
+        player_system.camera_transform = self.main_camera.transform
         self.world.add_system(player_system)
         
         # Add Player Action System
@@ -140,9 +141,19 @@ class AbyssalEternae(Application):
         self.debug_overlay_visible = True
         self.debug_node_path = None
         
+        # Secondary Camera Debug
+        self.secondary_window = None
+        self.secondary_camera = None
+        self.debug_camera_active = False
+        self.debug_cam_angle = 0.0
+        self.debug_cam_distance = 150.0
+        self.debug_cam_height = 100.0
+        
         # Input Debounce
         self.f3_pressed = False
         self.f4_pressed = False
+        self.f5_pressed = False
+        self.c_pressed = False
 
         # Load Game World
         self._load_game_world()
@@ -266,15 +277,12 @@ class AbyssalEternae(Application):
         else:
             self.f3_pressed = False
             
-        if self.input.is_key_down('f4'):
-            if not self.f4_pressed:
-                self.f4_pressed = True
-                self.debug_overlay_visible = not self.debug_overlay_visible
-                if hasattr(self, 'debug_label'):
-                    self.debug_label.visible = self.debug_overlay_visible
-        else:
-            self.f4_pressed = False
-            
+        # Secondary Camera Toggle (F3 + F4)
+        if self.input.is_key_down('f3') and self.input.is_key_down('f4'):
+            if not self.debug_camera_active:
+                self.debug_camera_active = True
+                self._open_secondary_window()
+        
         # Update Debug Info
         if hasattr(self, 'debug_label') and self.debug_label.visible:
             fps = 1.0 / dt if dt > 0 else 60.0
@@ -285,6 +293,59 @@ class AbyssalEternae(Application):
         """Update camera after physics."""
         if hasattr(self, 'camera_controller'):
             self.camera_controller.update(dt, alpha)
+            
+        # Update secondary camera
+        if self.secondary_window:
+            # Manual Orbit Logic
+            self.debug_cam_angle += dt * 0.2 # Slow rotation
+            
+            player_pos = self.player.get_component(Transform).get_world_position()
+            
+            # Calculate position
+            x = player_pos[0] + math.cos(self.debug_cam_angle) * self.debug_cam_distance
+            y = player_pos[1] + math.sin(self.debug_cam_angle) * self.debug_cam_distance
+            z = player_pos[2] + self.debug_cam_height
+            
+            # Sync to Panda Node
+            if hasattr(self, 'secondary_cam_np'):
+                self.secondary_cam_np.setPos(x, y, z)
+                self.secondary_cam_np.lookAt(player_pos[0], player_pos[1], player_pos[2])
+
+    def _open_secondary_window(self):
+        """Open a secondary window for debug rendering."""
+        if self.secondary_window:
+            return
+            
+        from panda3d.core import WindowProperties, Camera as PandaCamera, DisplayRegion, NodePath
+        from aurora_engine.camera.camera import Camera
+        
+        base = self.renderer.backend.base
+        
+        # Open new window
+        props = WindowProperties()
+        props.setTitle("Debug View - Global Observer")
+        props.setSize(640, 480)
+        
+        self.secondary_window = base.openWindow(props=props, makeCamera=False)
+        
+        # Create a new camera node for this window
+        cam_node = PandaCamera('secondary_cam')
+        # Set lens for wider view
+        lens = cam_node.getLens()
+        lens.setFov(90)
+        lens.setNear(1.0)
+        lens.setFar(5000.0) # Far clip to see everything
+        
+        self.secondary_cam_np = base.render.attachNewNode(cam_node)
+        
+        # Create display region
+        dr = self.secondary_window.makeDisplayRegion()
+        dr.setCamera(self.secondary_cam_np)
+        
+        # Create Engine Camera wrapper
+        self.secondary_camera = Camera()
+        
+        logger.info("Secondary debug window opened")
 
     def _process_futures(self):
         """Process completed futures."""

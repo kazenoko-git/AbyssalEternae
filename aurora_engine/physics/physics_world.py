@@ -151,6 +151,28 @@ class PhysicsWorld:
                 body._bullet_body = None
                 # logger.debug(f"Removed rigid body for Entity {body.entity.id if body.entity else 'Unknown'}")
 
+    def remove_static_body(self, entity: Entity):
+        """Unregister a static body by entity."""
+        # We need to find the node associated with this entity
+        # Since we don't store static bodies in a list in PhysicsWorld (only in Bullet),
+        # we have to search the map.
+        
+        # Optimization: We could store static bodies in a separate list if this is slow.
+        # But for now, let's reverse lookup or iterate.
+        # Actually, we can't easily reverse lookup without storing it.
+        
+        # Let's iterate _node_to_entity
+        node_to_remove = None
+        for node, ent in self._node_to_entity.items():
+            if ent == entity:
+                node_to_remove = node
+                break
+        
+        if node_to_remove:
+            self._bullet_world.removeRigidBody(node_to_remove)
+            del self._node_to_entity[node_to_remove]
+            # logger.debug(f"Removed static body for Entity {entity.id}")
+
     def step(self, dt: float):
         """Step physics simulation."""
         with profile_section("PhysicsStep"):

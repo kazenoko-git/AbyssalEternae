@@ -9,7 +9,7 @@ from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
-from panda3d.core import Vec4
+from panda3d.core import Vec4, BillboardEffect
 
 
 class Renderer:
@@ -138,6 +138,19 @@ class Renderer:
             
             if mesh_renderer._node_path:
                 mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
+                
+                # Apply texture if provided
+                if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
+                    try:
+                        tex = self.backend.base.loader.loadTexture(mesh_renderer.texture_path)
+                        mesh_renderer._node_path.setTexture(tex, 1)
+                        mesh_renderer._node_path.setTransparency(True) # Enable transparency for PNGs
+                    except Exception as e:
+                        self.logger.warning(f"Failed to load texture {mesh_renderer.texture_path}: {e}")
+                
+                # Apply billboard effect if requested
+                if hasattr(mesh_renderer, 'billboard') and mesh_renderer.billboard:
+                    mesh_renderer._node_path.setEffect(BillboardEffect.makePointEye())
         
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
             # Update transform

@@ -83,13 +83,14 @@ class MeshRenderer(Component):
     Renders a mesh with a material.
     """
 
-    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None, color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0), model_path: Optional[str] = None):
+    def __init__(self, mesh: Optional[Mesh] = None, material: Optional[Material] = None, color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0), model_path: Optional[str] = None, texture_path: Optional[str] = None):
         super().__init__()
 
         self.mesh = mesh
         self.material = material
         self.color = color # Simple color override if no material
         self.model_path = model_path
+        self.texture_path = texture_path # Path to texture image
         self.alpha = 1.0 # For fade-in effects
         self._node_path = None # Handle to Panda3D node
 
@@ -102,6 +103,7 @@ class MeshRenderer(Component):
         self.cast_shadows = True
         self.receive_shadows = True
         self.visible = True
+        self.billboard = False # If true, always face camera
         
         # logger.debug("MeshRenderer component created")
 

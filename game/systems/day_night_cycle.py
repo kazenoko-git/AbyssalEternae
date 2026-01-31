@@ -15,7 +15,7 @@ class DayNightCycle(System):
     Manages the day/night cycle, including sun/moon movement and lighting/sky color changes.
     """
 
-    def __init__(self, renderer, day_duration: float = 30.0):
+    def __init__(self, renderer, day_duration: float = 60.0):
         super().__init__()
         self.renderer = renderer
         self.day_duration = day_duration # Seconds for a full day
@@ -27,6 +27,9 @@ class DayNightCycle(System):
         self.moon_light_node = None
         self.ambient_light_node = None
         self.fog = None
+        
+        self.target = None # Player transform to follow
+        self.orbit_radius = 500.0 # Distance from player
         
         self._setup_lights()
         self._setup_color_gradient()
@@ -110,32 +113,117 @@ class DayNightCycle(System):
     def update(self, entities, dt):
         self.time = (self.time + dt / self.day_duration) % 1.0
         
+        # Calculate Sun/Moon Position relative to Player
+        # They should orbit around the player to simulate being "infinitely far away" but visible
+        center_pos = np.array([0, 0, 0], dtype=np.float32)
+        if self.target:
+            center_pos = self.target.get_world_position()
+            
         angle = self.time * 2 * math.pi
-        radius = 100.0
         
-        sun_x = -math.sin(angle) * radius
-        sun_z = math.cos(angle) * radius
-        sun_y = 0 
+        # Orbit in YZ plane (East-West)
+        # Noon (0.0) -> Sun High (+Z)
+        # Sunset (0.25) -> Sun West (-X)
+        # Midnight (0.5) -> Sun Low (-Z)
         
+        # We want Sun to rise in East (+X) and set in West (-X)
+        # Angle 0 = Noon (Top)
+        # Angle PI/2 = Sunset (West, -X)
+        # Angle PI = Midnight (Bottom)
+        # Angle 3PI/2 = Sunrise (East, +X)
+        
+        # Correct math for East-West orbit:
+        # X = sin(angle) * radius (0 at noon, 1 at sunset, 0 at midnight, -1 at sunrise) -> Wait, sunrise is East (+X)
+        # Let's align:
+        # Time 0.0 (Noon): Sun at (0, 0, +R)
+        # Time 0.25 (Sunset): Sun at (-R, 0, 0) (West)
+        # Time 0.75 (Sunrise): Sun at (+R, 0, 0) (East)
+        
+        sun_x = math.sin(angle) * self.orbit_radius # 0 -> 1 -> 0 -> -1
+        # We want +1 at 0.75 (Sunrise) and -1 at 0.25 (Sunset)
+        # sin(0.75 * 2pi) = sin(1.5pi) = -1. Wrong direction.
+        # Let's use cos/sin standard circle and rotate.
+        
+        # Standard:
+        # 0.0 -> Top (+Z)
+        # 0.25 -> Right (+X)
+        # 0.5 -> Bottom (-Z)
+        # 0.75 -> Left (-X)
+        
+        # We want 0.25 to be West (-X). So invert X.
+        
+        sun_h = math.cos(angle) * self.orbit_radius # Height (+Z)
+        sun_w = -math.sin(angle) * self.orbit_radius # East/West (-X)
+        
+        # Position relative to player
+        # We keep Y constant relative to player so it follows them
+        
+        sun_pos = np.array([
+            center_pos[0] + sun_w,
+            center_pos[1], # Keep same Y depth
+            center_pos[2] + sun_h
+        ], dtype=np.float32)
+        
+        moon_pos = np.array([
+            center_pos[0] - sun_w,
+            center_pos[1],
+            center_pos[2] - sun_h
+        ], dtype=np.float32)
+        
+        # Update Entities
         if self.sun_entity:
             t = self.sun_entity.get_component(Transform)
-            t.set_world_position(np.array([sun_x, sun_y, sun_z], dtype=np.float32))
+            t.set_world_position(sun_pos)
+            # Look at player
+            self._look_at(t, center_pos)
             
-        self.sun_light_node.setPos(sun_x, sun_y, sun_z)
-        self.sun_light_node.lookAt(0, 0, 0)
-        
-        moon_x = -sun_x
-        moon_z = -sun_z
-        moon_y = -sun_y
-        
         if self.moon_entity:
             t = self.moon_entity.get_component(Transform)
-            t.set_world_position(np.array([moon_x, moon_y, moon_z], dtype=np.float32))
+            t.set_world_position(moon_pos)
+            self._look_at(t, center_pos)
             
-        self.moon_light_node.setPos(moon_x, moon_y, moon_z)
-        self.moon_light_node.lookAt(0, 0, 0)
+        # Update Lights
+        # Directional light position doesn't matter for lighting, only rotation
+        # But we set position for shadow mapping frustum center
+        self.sun_light_node.setPos(sun_pos[0], sun_pos[1], sun_pos[2])
+        self.sun_light_node.lookAt(center_pos[0], center_pos[1], center_pos[2])
         
-        self._update_colors(sun_z)
+        self.moon_light_node.setPos(moon_pos[0], moon_pos[1], moon_pos[2])
+        self.moon_light_node.lookAt(center_pos[0], center_pos[1], center_pos[2])
+        
+        self._update_colors(sun_h)
+
+    def _look_at(self, transform, target_pos):
+        # Simple look at for entities
+        # We need to set rotation quaternion
+        # Vector from transform to target
+        origin = transform.get_world_position()
+        direction = target_pos - origin
+        if np.linalg.norm(direction) < 0.001: return
+        direction /= np.linalg.norm(direction)
+        
+        # Up vector (Global Z)
+        up = np.array([0, 0, 1], dtype=np.float32)
+        
+        # Calculate Right
+        right = np.cross(direction, up)
+        if np.linalg.norm(right) < 0.001:
+            right = np.array([1, 0, 0], dtype=np.float32)
+        else:
+            right /= np.linalg.norm(right)
+            
+        # Recalculate Up
+        up = np.cross(right, direction)
+        up /= np.linalg.norm(up)
+        
+        # Matrix
+        rot_mat = np.eye(3, dtype=np.float32)
+        rot_mat[:, 0] = right
+        rot_mat[:, 1] = direction # Forward
+        rot_mat[:, 2] = up
+        
+        from aurora_engine.utils.math import matrix_to_quaternion
+        transform.local_rotation = matrix_to_quaternion(rot_mat)
 
     def _interpolate_color(self, gradient, time):
         keys = sorted(gradient.keys())
