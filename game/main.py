@@ -128,9 +128,14 @@ class AbyssalEternae(Application):
         self.pending_data: Dict[Tuple[int, int], object] = {} 
         self.pending_meshes: Dict[Tuple[int, int], object] = {} 
 
-        # Reduced load radius for performance (User requested)
-        self.load_radius = 2 
-        self.unload_radius = 4
+        # Render Radius Configuration
+        self.chunk_size = 100.0
+        self.render_radius_chunks = 6 # 6 chunks radius
+        self.render_radius_world = self.render_radius_chunks * self.chunk_size
+        
+        # Fog Radius (Must be smaller than render radius by at least 1 chunk)
+        self.fog_radius = (self.render_radius_chunks - 1) * self.chunk_size
+        
         self.last_chunk_check = 0.0
         
         # Store current dimension ID
@@ -172,7 +177,12 @@ class AbyssalEternae(Application):
         from panda3d.core import Fog
         fog = Fog("DistanceFog")
         fog.setColor(0.53, 0.8, 0.92) # Sky blue
-        fog.setExpDensity(0.005) # Adjust density
+        
+        # Exponential fog density based on radius
+        # Visibility ~ 3 / density
+        # density = 3 / fog_radius
+        density = 3.0 / self.fog_radius
+        fog.setExpDensity(density) 
         
         if hasattr(self.renderer.backend, 'scene_graph'):
             self.renderer.backend.scene_graph.setFog(fog)
@@ -215,16 +225,30 @@ class AbyssalEternae(Application):
 
     def _setup_celestial_bodies(self):
         """Create visual entities for Sun and Moon."""
-        # Sun (2D Plane, Far away)
+        # Sun (Billboard Plane)
         sun = self.world.create_entity()
         sun.add_component(Transform())
-        # Use plane mesh for 2D look
-        sun.add_component(MeshRenderer(mesh=create_plane_mesh(200.0, 200.0), color=(1.0, 1.0, 0.8, 1.0))) 
         
-        # Moon (2D Plane, Far away)
+        # Use texture path for image
+        sun_renderer = MeshRenderer(
+            mesh=create_plane_mesh(100.0, 100.0), 
+            color=(1.0, 1.0, 0.8, 1.0),
+            texture_path="assets/textures/sun.png" # Placeholder path
+        )
+        sun_renderer.billboard = True # Always face camera
+        sun.add_component(sun_renderer)
+        
+        # Moon (Billboard Plane)
         moon = self.world.create_entity()
         moon.add_component(Transform())
-        moon.add_component(MeshRenderer(mesh=create_plane_mesh(150.0, 150.0), color=(0.8, 0.8, 1.0, 1.0)))
+        
+        moon_renderer = MeshRenderer(
+            mesh=create_plane_mesh(80.0, 80.0), 
+            color=(0.8, 0.8, 1.0, 1.0),
+            texture_path="assets/textures/moon.png" # Placeholder path
+        )
+        moon_renderer.billboard = True # Always face camera
+        moon.add_component(moon_renderer)
         
         # Pass entities to DayNightCycle system
         # We need to find the system first
@@ -233,7 +257,11 @@ class AbyssalEternae(Application):
                 system.sun_entity = sun
                 system.moon_entity = moon
                 # Adjust distance in system if needed, or just rely on system updating position
-                system.orbit_radius = 500.0 # Push them further away
+                # Sun/Moon should be within fog radius so they are visible?
+                # No, celestial bodies usually ignore fog or are rendered last.
+                # But if we put them inside fog radius, they will be visible.
+                # Let's put them at fog_radius - 50
+                system.orbit_radius = self.fog_radius - 50.0 
                 break
 
     def update(self, dt: float, alpha: float):
@@ -242,7 +270,7 @@ class AbyssalEternae(Application):
         
         # Chunk Management
         self.last_chunk_check += dt
-        if self.last_chunk_check > 1.0: # Increased from 0.25 to 1.0 to reduce lag
+        if self.last_chunk_check > 0.5: # Check every 0.5s
             self._manage_chunks()
             self.last_chunk_check = 0.0
         
@@ -384,22 +412,19 @@ class AbyssalEternae(Application):
         # Use player position for chunk loading
         player_pos = self.player.get_component(Transform).get_world_position()
         
-        # 1. Determine needed chunks
-        # We use a slightly larger radius for loading to prevent pop-in at the edge of fog
-        # But we strictly unload anything outside the unload radius
-        
-        # Calculate camera frustum culling would be ideal, but for now distance-based is safer and simpler
-        # to ensure "whatever is not within render distance HAS to remain unloaded"
-        
         # Current Chunk Coordinates
-        current_chunk_x = int(player_pos[0] / 100.0)
-        current_chunk_y = int(player_pos[1] / 100.0)
+        current_chunk_x = int(player_pos[0] / self.chunk_size)
+        current_chunk_y = int(player_pos[1] / self.chunk_size)
         
+        # 1. Determine needed chunks (Circular Radius)
         needed_chunks = set()
-        for x in range(current_chunk_x - self.load_radius, current_chunk_x + self.load_radius + 1):
-            for y in range(current_chunk_y - self.load_radius, current_chunk_y + self.load_radius + 1):
-                # Check circular distance to avoid square loading pattern
-                if (x - current_chunk_x)**2 + (y - current_chunk_y)**2 <= self.load_radius**2:
+        radius = self.render_radius_chunks
+        
+        # Iterate bounding box of circle
+        for x in range(current_chunk_x - radius, current_chunk_x + radius + 1):
+            for y in range(current_chunk_y - radius, current_chunk_y + radius + 1):
+                # Check circular distance
+                if (x - current_chunk_x)**2 + (y - current_chunk_y)**2 <= radius**2:
                     needed_chunks.add((x, y))
         
         # 2. Unload distant chunks (Strict Unload)
@@ -417,7 +442,7 @@ class AbyssalEternae(Application):
         current_loads = len(self.pending_data) + len(self.pending_meshes)
         
         # Sort needed chunks by distance to player so closest load first
-        sorted_needed = sorted(list(needed_chunks), key=lambda c: (c[0]*100 - player_pos[0])**2 + (c[1]*100 - player_pos[1])**2)
+        sorted_needed = sorted(list(needed_chunks), key=lambda c: (c[0]*self.chunk_size - player_pos[0])**2 + (c[1]*self.chunk_size - player_pos[1])**2)
         
         for coords in sorted_needed:
             if current_loads >= max_concurrent_loads:
@@ -453,14 +478,22 @@ class AbyssalEternae(Application):
         
         # Initial Load (Synchronous)
         logger.info("Loading initial area...")
-        regions = self.world_generator.load_chunks_around_player(self.current_dimension_id, 0, 0, radius=self.load_radius)
         
-        for region in regions:
-            meshes = generate_chunk_meshes(region)
-            self._instantiate_chunk(region, meshes, fade_in=False)
+        # Load initial chunks synchronously to prevent falling through floor
+        player_pos = self.player.get_component(Transform).get_world_position()
+        current_chunk_x = int(player_pos[0] / self.chunk_size)
+        current_chunk_y = int(player_pos[1] / self.chunk_size)
+        
+        radius = self.render_radius_chunks
+        for x in range(current_chunk_x - radius, current_chunk_x + radius + 1):
+            for y in range(current_chunk_y - radius, current_chunk_y + radius + 1):
+                if (x - current_chunk_x)**2 + (y - current_chunk_y)**2 <= radius**2:
+                    region = self.world_generator.generate_region(self.current_dimension_id, x, y)
+                    meshes = generate_chunk_meshes(region)
+                    self._instantiate_chunk(region, meshes, fade_in=False)
             
         # Adjust Player Height
-        center_region = next((r for r in regions if r['coordinates_x'] == 0 and r['coordinates_y'] == 0), None)
+        center_region = self.world_generator.generate_region(self.current_dimension_id, 0, 0)
         if center_region:
             h = get_height_at_world_pos(0, 0, center_region, cell_size=100.0/20.0) # 20 is resolution
             self.player.get_component(Transform).set_world_position(np.array([0, 0, h + 5.0], dtype=np.float32)) # Drop from 5m

@@ -103,6 +103,10 @@ class Renderer:
     def _render_entities(self, world: World):
         """Render all entities with mesh components."""
         
+        # Optimization: Only iterate active entities
+        # In a real engine, we would use a spatial partition (Octree/BVH) here
+        # For now, we rely on the fact that World only contains loaded chunks
+        
         for entity in world.entities:
             if not entity.active:
                 continue
@@ -178,6 +182,13 @@ class Renderer:
             # Apply transparency if needed (for fade-in)
             if mesh_renderer.alpha < 1.0:
                 mesh_renderer._node_path.setAlphaScale(mesh_renderer.alpha)
+            
+            # Visibility check (Frustum Culling handled by Panda3D automatically)
+            # But we can force hide if needed
+            if not mesh_renderer.visible:
+                mesh_renderer._node_path.hide()
+            else:
+                mesh_renderer._node_path.show()
 
     def unload_mesh(self, mesh: Mesh):
         """Unload a mesh from the backend."""

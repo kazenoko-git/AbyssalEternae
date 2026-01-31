@@ -18,7 +18,7 @@ class PhysicsWorld:
     """
 
     def __init__(self, config: dict = None):
-        # Increased gravity for more realistic feel (default -9.81 feels floaty in games)
+        # Increased gravity for more realistic feel
         self.gravity = np.array([0.0, 0.0, -20.0], dtype=np.float32)
         if config and 'gravity' in config:
             self.gravity = np.array(config['gravity'], dtype=np.float32)
@@ -26,8 +26,9 @@ class PhysicsWorld:
         self.bodies: List[RigidBody] = []
         self.colliders: List[Collider] = []
         
-        # Map Bullet nodes to Entities for raycasting/callbacks
+        # Bi-directional mapping for O(1) access
         self._node_to_entity: Dict[object, Entity] = {}
+        self._entity_to_node: Dict[Entity, object] = {}
 
         # Panda3D Bullet physics integration
         self._bullet_world = None
@@ -106,6 +107,7 @@ class PhysicsWorld:
         
         # Store mapping
         self._node_to_entity[node] = entity
+        self._entity_to_node[entity] = node
         # logger.debug(f"Added rigid body for Entity {entity.id}")
 
     def add_static_body(self, entity: Entity):
@@ -138,6 +140,7 @@ class PhysicsWorld:
         # Add to world
         self._bullet_world.attachRigidBody(node)
         self._node_to_entity[node] = entity
+        self._entity_to_node[entity] = node
         # logger.debug(f"Added static body for Entity {entity.id}")
 
     def remove_body(self, body: RigidBody):
@@ -146,31 +149,23 @@ class PhysicsWorld:
             self.bodies.remove(body)
             if body._bullet_body:
                 self._bullet_world.removeRigidBody(body._bullet_body)
+                
+                # Clean maps
                 if body._bullet_body in self._node_to_entity:
                     del self._node_to_entity[body._bullet_body]
+                if body.entity in self._entity_to_node:
+                    del self._entity_to_node[body.entity]
+                    
                 body._bullet_body = None
-                # logger.debug(f"Removed rigid body for Entity {body.entity.id if body.entity else 'Unknown'}")
 
     def remove_static_body(self, entity: Entity):
         """Unregister a static body by entity."""
-        # We need to find the node associated with this entity
-        # Since we don't store static bodies in a list in PhysicsWorld (only in Bullet),
-        # we have to search the map.
-        
-        # Optimization: We could store static bodies in a separate list if this is slow.
-        # But for now, let's reverse lookup or iterate.
-        # Actually, we can't easily reverse lookup without storing it.
-        
-        # Let's iterate _node_to_entity
-        node_to_remove = None
-        for node, ent in self._node_to_entity.items():
-            if ent == entity:
-                node_to_remove = node
-                break
-        
-        if node_to_remove:
-            self._bullet_world.removeRigidBody(node_to_remove)
-            del self._node_to_entity[node_to_remove]
+        if entity in self._entity_to_node:
+            node = self._entity_to_node[entity]
+            self._bullet_world.removeRigidBody(node)
+            
+            del self._node_to_entity[node]
+            del self._entity_to_node[entity]
             # logger.debug(f"Removed static body for Entity {entity.id}")
 
     def step(self, dt: float):
@@ -295,5 +290,6 @@ class PhysicsWorld:
     def shutdown(self):
         self.bodies.clear()
         self._node_to_entity.clear()
+        self._entity_to_node.clear()
         self._bullet_world = None
         logger.info("Physics world shutdown")
