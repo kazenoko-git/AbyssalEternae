@@ -7,6 +7,7 @@ import weakref
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
 import os
+import sys
 
 logger = get_logger()
 
@@ -28,6 +29,10 @@ class PandaBackend:
 
     def initialize(self):
         """Initialize Panda3D."""
+        # Apply custom patch for bufferView KeyError EARLY
+        # This must happen before any GLTF loading or simplepbr init
+        self._patch_gltf_loader()
+
         # Load config
         load_prc_file_data("", f"""
             win-size {self.config.get('width', 1920)} {self.config.get('height', 1080)}
@@ -61,7 +66,7 @@ class PandaBackend:
         getModelPath().appendDirectory(os.getcwd())
         
         # Register gltf loader
-        # Try importing panda3d-gltf simplepbr way or just simplepbr if available
+        # Try importing panda3d-simplepbr (module name is simplepbr)
         has_simplepbr = False
         try:
             import simplepbr
@@ -87,6 +92,113 @@ class PandaBackend:
                 logger.warning("panda3d-gltf not found. GLB models will not load.")
 
         logger.info("Panda3D initialized")
+
+    def _patch_gltf_loader(self):
+        """Patch panda3d-gltf to handle missing bufferView in accessors."""
+        logger.info("Attempting to patch gltf loader...")
+        try:
+            # Force import of the exact modules used in traceback
+            import gltf._loader
+            import gltf._converter
+            
+            # --- Define Patched Functions ---
+            
+            def patched_load_model(*args, **kwargs):
+                # logger.info(f"patched_load_model called with {len(args)} args")
+                # Scan args for gltf_data (it's a dict with 'accessors')
+                found = False
+                for arg in args:
+                    if isinstance(arg, dict) and 'accessors' in arg:
+                        found = True
+                        count = 0
+                        for acc in arg['accessors']:
+                            if 'bufferView' not in acc:
+                                acc['bufferView'] = 0
+                                count += 1
+                        if count > 0:
+                            logger.info(f"Sanitized {count} accessors in gltf_data (args)")
+                
+                if not found and 'gltf_data' in kwargs:
+                     arg = kwargs['gltf_data']
+                     if isinstance(arg, dict) and 'accessors' in arg:
+                         count = 0
+                         for acc in arg['accessors']:
+                            if 'bufferView' not in acc:
+                                acc['bufferView'] = 0
+                                count += 1
+                         if count > 0:
+                            logger.info(f"Sanitized {count} accessors in gltf_data (kwargs)")
+
+                return gltf._loader._original_load_model(*args, **kwargs)
+
+            def patched_update(self, gltf_data, *args, **kwargs):
+                # Sanitize accessors again just to be sure
+                if isinstance(gltf_data, dict) and 'accessors' in gltf_data:
+                    count = 0
+                    for acc in gltf_data['accessors']:
+                        if 'bufferView' not in acc:
+                            acc['bufferView'] = 0
+                            count += 1
+                    if count > 0:
+                        logger.info(f"Sanitized {count} accessors in update")
+                            
+                return gltf._converter.GltfConverter._original_update(self, gltf_data, *args, **kwargs)
+
+            def patched_load_primitive(self, node, gltf_primitive, gltf_mesh, gltf_data, *args, **kwargs):
+                try:
+                    return gltf._converter.GltfConverter._original_load_primitive(self, node, gltf_primitive, gltf_mesh, gltf_data, *args, **kwargs)
+                except KeyError as e:
+                    if 'bufferView' in str(e):
+                        logger.error("Caught bufferView KeyError in load_primitive. Attempting recovery.")
+                        # Last ditch effort: fix ALL accessors and retry
+                        if 'accessors' in gltf_data:
+                            for acc in gltf_data['accessors']:
+                                if 'bufferView' not in acc:
+                                    acc['bufferView'] = 0
+                        return gltf._converter.GltfConverter._original_load_primitive(self, node, gltf_primitive, gltf_mesh, gltf_data, *args, **kwargs)
+                    raise e
+
+            # --- Apply Patches ---
+
+            # Patch 1: gltf._loader.load_model
+            if not getattr(gltf._loader, '_is_patched_by_aurora_load', False):
+                gltf._loader._original_load_model = gltf._loader.load_model
+                gltf._loader.load_model = patched_load_model
+                gltf._loader._is_patched_by_aurora_load = True
+                logger.info("Successfully patched gltf._loader.load_model")
+            
+            # Patch 2: gltf._converter.GltfConverter methods
+            TargetClass = gltf._converter.GltfConverter
+            
+            if not getattr(TargetClass, '_is_patched_by_aurora_update', False):
+                TargetClass._original_update = TargetClass.update
+                TargetClass.update = patched_update
+                TargetClass._is_patched_by_aurora_update = True
+                logger.info("Successfully patched gltf._converter.GltfConverter.update")
+            
+            if not getattr(TargetClass, '_is_patched_by_aurora_prim', False):
+                TargetClass._original_load_primitive = TargetClass.load_primitive
+                TargetClass.load_primitive = patched_load_primitive
+                TargetClass._is_patched_by_aurora_prim = True
+                logger.info("Successfully patched gltf._converter.GltfConverter.load_primitive")
+
+            # Patch 3: Force update GltfConverter in gltf._loader namespace
+            if hasattr(gltf._loader, 'GltfConverter'):
+                # If it's a different object, we need to patch it too
+                LoaderConverter = gltf._loader.GltfConverter
+                if LoaderConverter is not TargetClass:
+                    logger.info("gltf._loader.GltfConverter is a different class object. Patching it.")
+                    LoaderConverter._original_update = LoaderConverter.update
+                    LoaderConverter.update = patched_update
+                    LoaderConverter._original_load_primitive = LoaderConverter.load_primitive
+                    LoaderConverter.load_primitive = patched_load_primitive
+                else:
+                    logger.info("gltf._loader.GltfConverter is the same class object.")
+
+        except ImportError as e:
+            logger.warning(f"Could not import gltf module for patching: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to patch gltf loader: {e}")
 
     def clear_buffers(self):
         """Clear color and depth buffers."""

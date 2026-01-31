@@ -75,7 +75,7 @@ class AbyssalEternae(Application):
 
         # Add player visual
         # Using FBX as it is more reliable with current loader setup (auto-scaled and textured)
-        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.fbx"))
+        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.glb"))
         
         # Add player physics
         self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))

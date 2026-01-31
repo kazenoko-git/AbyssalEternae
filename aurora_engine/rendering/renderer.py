@@ -9,7 +9,7 @@ from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
-from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath
+from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3
 import os
 
 
@@ -159,31 +159,46 @@ class Renderer:
                     
                     mesh_renderer._node_path = self.backend.base.loader.loadModel(model_path)
                     
-                    # Fix for massive FBX models: Normalize scale
-                    # FBX often comes in with units like cm instead of meters (100x scale)
+                    # Fix for massive FBX models: Normalize scale and Center
                     if model_path.lower().endswith('.fbx'):
                         # Get bounds to estimate size
                         min_pt, max_pt = mesh_renderer._node_path.getTightBounds()
                         size = max_pt - min_pt
                         max_dim = max(size.getX(), size.getY(), size.getZ())
                         
-                        # If character is huge (e.g. > 10 units tall), scale it down
-                        # Assuming a character should be roughly 2 units tall (meters)
+                        # Center the model (Pivot at bottom center)
+                        # Calculate current bottom center
+                        bottom_center = Point3((min_pt.getX() + max_pt.getX()) / 2.0,
+                                               (min_pt.getY() + max_pt.getY()) / 2.0,
+                                               min_pt.getZ())
+                        
+                        # Offset to bring bottom center to (0,0,0)
+                        mesh_renderer._node_path.setPos(-bottom_center)
+                        
+                        # Scale logic
+                        scale_factor = 1.0
                         if max_dim > 10.0:
                             scale_factor = 2.0 / max_dim
-                            mesh_renderer._node_path.setScale(scale_factor)
-                            mesh_renderer._node_path.flattenLight() # Bake scale
                             self.logger.info(f"Auto-scaled massive FBX model by {scale_factor:.4f}")
                         elif max_dim < 0.1 and max_dim > 0:
-                            # Too small? Scale up
                             scale_factor = 2.0 / max_dim
-                            mesh_renderer._node_path.setScale(scale_factor)
-                            mesh_renderer._node_path.flattenLight()
                             self.logger.info(f"Auto-scaled tiny FBX model by {scale_factor:.4f}")
+                            
+                        if scale_factor != 1.0:
+                            mesh_renderer._node_path.setScale(scale_factor)
+                            
+                        # Bake transform (position offset and scale) into vertices
+                        mesh_renderer._node_path.flattenLight()
+                        
+                        # Ensure color is white so textures show up
+                        mesh_renderer._node_path.setColor(1, 1, 1, 1)
 
                 except Exception as e:
                     self.logger.warning(f"Failed to load model {mesh_renderer.model_path}: {e}")
-                    # Fallback to cube
+                    # Fallback to cube if loading fails
+                    # THIS IS WHY IT WAS A SPHERE/CUBE - The fallback was triggering!
+                    # Let's log explicitly that fallback is used
+                    self.logger.error("Using fallback cube mesh due to load failure.")
                     from aurora_engine.rendering.mesh import create_cube_mesh
                     mesh_renderer._node_path = self.backend.create_mesh_node(create_cube_mesh())
             
@@ -235,7 +250,12 @@ class Renderer:
                     mesh_renderer._node_path.setColorOff()
                 else:
                     # Apply simple color from MeshRenderer component
-                    mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
+                    # Only apply color if no texture is present, or if we want to tint
+                    # If texture is present, we usually want white color to not tint it
+                    if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
+                         mesh_renderer._node_path.setColor(1, 1, 1, 1)
+                    else:
+                         mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
             
             # Apply transparency if needed (for fade-in)
             if mesh_renderer.alpha < 1.0:
