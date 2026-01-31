@@ -5,6 +5,7 @@ from aurora_engine.ui.dialogue_box import DialogueBox
 from game.components.npc import NPCController
 from game.ai.ai_generator import AIContentGenerator
 from aurora_engine.core.logging import get_logger
+import json
 
 logger = get_logger()
 
@@ -65,12 +66,41 @@ class DialogueSystem(System):
         """Add player dialogue options."""
         choices = [
             ("Ask about the village", lambda: self._player_choice(0)),
-            ("Ask for a quest", lambda: self._player_choice(1)),
+            ("Ask for a quest", lambda: self._request_quest(npc_controller)),
             ("Goodbye", lambda: self._end_dialogue())
         ]
 
         for choice_text, callback in choices:
             self.dialogue_box.add_choice(choice_text, callback)
+
+    def _request_quest(self, npc_controller):
+        """Handle player requesting a quest."""
+        logger.info(f"Player requested quest from {npc_controller.npc_id}")
+        
+        # Generate quest
+        quest_data = self.ai_generator.generate_quest(
+            quest_type="Adventure",
+            difficulty=1,
+            npc_id=npc_controller.npc_id
+        )
+        
+        # Format response
+        response = f"I have a task for you: {quest_data['title']}.\n{quest_data['description']}"
+        
+        # Update dialogue box
+        self.dialogue_box.clear_choices()
+        self.dialogue_box.show_dialogue(npc_controller.npc_name, response)
+        
+        # Add accept/decline choices
+        self.dialogue_box.add_choice("Accept Quest", lambda: self._accept_quest(quest_data))
+        self.dialogue_box.add_choice("Decline", lambda: self._add_dialogue_choices(npc_controller))
+
+    def _accept_quest(self, quest_data):
+        """Handle quest acceptance."""
+        logger.info(f"Player accepted quest: {quest_data['title']}")
+        # Here we would add the quest to the player's quest log
+        # For now just close dialogue or go back to main menu
+        self._end_dialogue()
 
     def _player_choice(self, choice_index: int):
         """Handle player dialogue choice."""

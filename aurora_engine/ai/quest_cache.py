@@ -4,7 +4,7 @@ from aurora_engine.database.db_manager import DatabaseManager
 import hashlib
 import json
 import time
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
@@ -12,6 +12,7 @@ logger = get_logger()
 class QuestCache:
     """
     Caches AI-generated quests to avoid redundant API calls.
+    Also handles persistence of active quests.
     """
 
     def __init__(self, db_manager: DatabaseManager):
@@ -27,14 +28,14 @@ class QuestCache:
         prompt_hash = self._compute_prompt_hash(prompt, context)
 
         result = self.db.fetch_one("""
-            SELECT generated_content, metadata FROM ai_cache
+            SELECT generated_content, metadata_json FROM ai_cache
             WHERE content_type = 'quest' AND prompt_hash = ?
         """, (prompt_hash,))
 
         if result:
             try:
                 content = json.loads(result['generated_content'])
-                metadata = json.loads(result['metadata']) if result['metadata'] else {}
+                metadata = json.loads(result['metadata_json']) if result.get('metadata_json') else {}
                 return {'content': content, 'metadata': metadata}
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to decode cached quest content: {e}")
@@ -49,7 +50,7 @@ class QuestCache:
             metadata_json = json.dumps(metadata) if metadata else None
 
             self.db.execute("""
-                INSERT OR REPLACE INTO ai_cache (content_type, prompt_hash, generated_content, metadata, created_at)
+                INSERT OR REPLACE INTO ai_cache (content_type, prompt_hash, generated_content, metadata_json, created_at)
                 VALUES (?, ?, ?, ?, ?)
             """, ('quest', prompt_hash, quest_json, metadata_json, int(time.time())))
 
@@ -57,16 +58,16 @@ class QuestCache:
         except Exception as e:
             logger.error(f"Failed to cache quest: {e}")
 
-    def save_quest_to_db(self, quest_id: str, title: str, description: str, objectives: List[str], rewards: Dict, status: str = "active"):
+    def save_quest_to_db(self, quest_id: str, title: str, description: str, objectives: Any, rewards: Dict, status: str = "active", npc_id_giver: str = None):
         """Save a quest definition to the quests table for persistence."""
         try:
             objectives_json = json.dumps(objectives)
             rewards_json = json.dumps(rewards)
 
             self.db.execute("""
-                INSERT OR REPLACE INTO quests (quest_id, title, description, objectives, rewards, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (quest_id, title, description, objectives_json, rewards_json, status, int(time.time())))
+                INSERT OR REPLACE INTO quests (quest_id, npc_id_giver, title, description, objectives_json, rewards_json, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (quest_id, npc_id_giver, title, description, objectives_json, rewards_json, status, int(time.time())))
             self.db.commit()
             logger.info(f"Saved quest '{title}' ({quest_id}) to database")
         except Exception as e:
@@ -79,13 +80,7 @@ class QuestCache:
         """, (quest_id,))
 
         if result:
-            try:
-                result['objectives'] = json.loads(result['objectives'])
-                result['rewards'] = json.loads(result['rewards'])
-                return result
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode quest data for {quest_id}: {e}")
-                return None
+            return self._parse_quest_row(result)
         return None
 
     def get_active_quests(self) -> List[Dict]:
@@ -96,12 +91,9 @@ class QuestCache:
         
         quests = []
         for row in results:
-            try:
-                row['objectives'] = json.loads(row['objectives'])
-                row['rewards'] = json.loads(row['rewards'])
-                quests.append(row)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode quest data for {row.get('quest_id')}: {e}")
+            quest = self._parse_quest_row(row)
+            if quest:
+                quests.append(quest)
         return quests
 
     def update_quest_status(self, quest_id: str, status: str):
@@ -113,3 +105,21 @@ class QuestCache:
             self.db.commit()
         except Exception as e:
             logger.error(f"Failed to update quest status for {quest_id}: {e}")
+
+    def _parse_quest_row(self, row: Dict) -> Optional[Dict]:
+        """Helper to parse quest row from DB."""
+        try:
+            if 'objectives_json' in row:
+                row['objectives'] = json.loads(row['objectives_json'])
+            elif 'objectives' in row:
+                row['objectives'] = json.loads(row['objectives'])
+
+            if 'rewards_json' in row:
+                row['rewards'] = json.loads(row['rewards_json'])
+            elif 'rewards' in row:
+                row['rewards'] = json.loads(row['rewards'])
+
+            return row
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to decode quest data for {row.get('quest_id')}: {e}")
+            return None
