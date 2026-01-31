@@ -73,9 +73,9 @@ class AbyssalEternae(Application):
         # Initial position will be adjusted after terrain load
         player_transform.set_world_position(np.array([0, 0, 10.0], dtype=np.float32))
 
-        # Add player visual (MC.glb)
-        # Use model_path instead of mesh for GLB loading
-        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.gltf"))
+        # Add player visual
+        # Using FBX as it is more reliable with current loader setup (auto-scaled and textured)
+        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.fbx"))
         
         # Add player physics
         self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))
