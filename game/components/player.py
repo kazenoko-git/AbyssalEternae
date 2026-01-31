@@ -21,4 +21,16 @@ class PlayerController(Component):
         self.inventory = []
         self.health = 100
         self.max_health = 100
+        
+        # State Flags
+        self.is_sprinting = False
+        self.is_sneaking = False
+        self.is_blocking = False
+        self.is_attacking = False
+        self.is_aiming = False # Zoom
+        
+        # Cooldowns / Timers
+        self.attack_cooldown = 0.0
+        self.block_stamina = 100.0
+
         # logger.debug("PlayerController created")

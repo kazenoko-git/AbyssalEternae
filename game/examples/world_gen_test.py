@@ -44,7 +44,7 @@ class WorldGenTest(Application):
                 'host': 'localhost',
                 'user': 'root',
                 'password': '',
-                'database': 'rifted_test_db',
+                'database': 'abyssal_eternae_test_db',
                 'port': 3306
             }
             
@@ -289,7 +289,7 @@ if __name__ == "__main__":
             'host': 'localhost',
             'user': 'root',
             'password': 'CeneX_1234',
-            'database': 'rifted_test_db',
+            'database': 'abyssal_eternae_test_db',
             'port': 3306
         }
     }

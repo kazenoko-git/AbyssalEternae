@@ -25,7 +25,7 @@ def run_stress_test():
         'host': 'localhost',
         'user': 'root',
         'password': 'CeneX_1234',
-        'database': 'rifted_stress_test',
+        'database': 'abyssal_eternae_stress_test',
         'port': 3306
     }
     

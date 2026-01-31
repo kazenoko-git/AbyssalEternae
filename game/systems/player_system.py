@@ -31,23 +31,34 @@ class PlayerSystem(System):
         """Update player movement."""
         
         # Input Vector (WASD)
+        # User requested: W=Forward, A=Left, S=Backward, D=Right
         input_vec = np.zeros(2, dtype=np.float32)
-        if self.input_manager.is_key_down("w"): input_vec[1] += 1.0
-        if self.input_manager.is_key_down("s"): input_vec[1] -= 1.0
-        if self.input_manager.is_key_down("a"): input_vec[0] -= 1.0
-        if self.input_manager.is_key_down("d"): input_vec[0] += 1.0
+        
+        if self.input_manager.is_key_down("w"): input_vec[1] += 1.0 # Forward (+Y)
+        if self.input_manager.is_key_down("s"): input_vec[1] -= 1.0 # Backward (-Y)
+        if self.input_manager.is_key_down("a"): input_vec[0] -= 1.0 # Left (-X)
+        if self.input_manager.is_key_down("d"): input_vec[0] += 1.0 # Right (+X)
             
         has_input = np.linalg.norm(input_vec) > 0.1
         if has_input:
             input_vec = input_vec / np.linalg.norm(input_vec)
 
         jump = self.input_manager.is_key_down("space")
-        sprint = self.input_manager.is_key_down("shift")
+        
+        # Sprint: Right Click or Control
+        sprint = self.input_manager.is_key_down("control") or self.input_manager.is_key_down("mouse3")
+        
+        # Sneak: Shift
+        sneak = self.input_manager.is_key_down("shift")
 
         for entity in entities:
             transform = entity.get_component(Transform)
             controller = entity.get_component(PlayerController)
             rigidbody = entity.get_component(RigidBody)
+
+            # Update Controller State
+            controller.is_sprinting = sprint
+            controller.is_sneaking = sneak
 
             # Calculate Movement Direction relative to Camera
             move_dir = np.zeros(3, dtype=np.float32)
@@ -67,7 +78,7 @@ class PlayerSystem(System):
                     right_flat /= np.linalg.norm(right_flat)
                     
                 # Calculate world direction
-                # Input Y is Forward (W), Input X is Right (D)
+                # Input Y is Forward/Back, Input X is Right/Left
                 move_dir = fwd_flat * input_vec[1] + right_flat * input_vec[0]
                 
                 if np.linalg.norm(move_dir) > 0.01:
@@ -76,7 +87,11 @@ class PlayerSystem(System):
             # Apply Velocity
             current_vel = rigidbody.velocity
             
-            target_speed = controller.sprint_speed if sprint else controller.move_speed
+            target_speed = controller.move_speed
+            if sprint:
+                target_speed = controller.sprint_speed
+            elif sneak:
+                target_speed = controller.move_speed * 0.5
             
             # If no input, decelerate (friction is handled by physics engine usually, but we want snappy stop)
             if not has_input:

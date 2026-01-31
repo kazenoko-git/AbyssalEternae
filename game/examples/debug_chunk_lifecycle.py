@@ -28,7 +28,7 @@ class ChunkLifecycleTest(Application):
             'host': 'localhost',
             'user': 'root',
             'password': 'CeneX_1234',
-            'database': 'rifted_lifecycle_test',
+            'database': 'abyssal_eternae_lifecycle_test',
             'port': 3306
         }
         self.db_manager = DatabaseManager(db_config)

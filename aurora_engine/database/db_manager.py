@@ -26,7 +26,7 @@ class DatabaseManager:
                 "host": self.config.get("host", "localhost"),
                 "user": self.config.get("user", "root"),
                 "password": self.config.get("password", ""),
-                "database": self.config.get("database", "rifted_db"),
+                "database": self.config.get("database", "abyssal_eternae_db"),
                 "port": self.config.get("port", 3306),
                 "autocommit": False # We handle commit manually
             }

@@ -18,4 +18,3 @@ A 3D stylized procedural RPG built in Python using a customised fork of Panda3D
 
 ## Status
 Early development prototype.
-

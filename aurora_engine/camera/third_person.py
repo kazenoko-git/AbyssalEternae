@@ -75,10 +75,11 @@ class ThirdPersonController(CameraController):
                 self.pitch = np.clip(self.pitch, self.min_pitch, self.max_pitch)
                 self.yaw = self.yaw % 360.0
                 
-        # Zoom (Scroll)
-        # if self.input_manager.get_scroll_y() != 0:
-        #     self.distance -= self.input_manager.get_scroll_y() * 2.0
-        #     self.distance = np.clip(self.distance, self.min_distance, self.max_distance)
+        # Zoom (C key)
+        if self.input_manager.is_key_down("c"):
+            self.distance = self.min_distance
+        else:
+            self.distance = 9.0 # Reset to default
 
         self._update_camera(dt, alpha)
 

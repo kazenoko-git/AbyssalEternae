@@ -18,7 +18,8 @@ class PhysicsWorld:
     """
 
     def __init__(self, config: dict = None):
-        self.gravity = np.array([0.0, 0.0, -9.81], dtype=np.float32)
+        # Increased gravity for more realistic feel (default -9.81 feels floaty in games)
+        self.gravity = np.array([0.0, 0.0, -20.0], dtype=np.float32)
         if config and 'gravity' in config:
             self.gravity = np.array(config['gravity'], dtype=np.float32)
             
@@ -30,17 +31,36 @@ class PhysicsWorld:
 
         # Panda3D Bullet physics integration
         self._bullet_world = None
+        self._debug_node = None
         
         # logger.debug(f"PhysicsWorld initialized with gravity={self.gravity}")
 
     def initialize(self):
         """Initialize physics backend."""
-        from panda3d.bullet import BulletWorld
+        from panda3d.bullet import BulletWorld, BulletDebugNode
         from panda3d.core import Vec3
 
         self._bullet_world = BulletWorld()
         self._bullet_world.setGravity(Vec3(self.gravity[0], self.gravity[1], self.gravity[2]))
+        
+        # Setup Debug Node
+        debug_node = BulletDebugNode('Debug')
+        debug_node.showWireframe(True)
+        debug_node.showConstraints(True)
+        debug_node.showBoundingBoxes(False)
+        debug_node.showNormals(False)
+        
+        self._debug_node = debug_node
+        
         logger.info("Physics backend initialized")
+        
+    def attach_debug_node(self, parent_node):
+        """Attach debug node to scene graph."""
+        if self._debug_node:
+            np = parent_node.attachNewNode(self._debug_node)
+            self._bullet_world.setDebugNode(self._debug_node)
+            return np
+        return None
 
     def add_body(self, entity: Entity, body: RigidBody):
         """Register a dynamic rigid body."""

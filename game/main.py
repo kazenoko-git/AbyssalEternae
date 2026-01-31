@@ -5,6 +5,7 @@ from aurora_engine.ecs.entity import Entity
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, create_cube_mesh, create_plane_mesh, create_capsule_mesh
 from game.systems.player_system import PlayerSystem
+from game.systems.player_action_system import PlayerActionSystem
 from game.systems.dialogue_system import DialogueSystem
 from game.systems.world_generator import WorldGenerator
 from game.systems.day_night_cycle import DayNightCycle
@@ -18,6 +19,8 @@ from game.utils.terrain import get_height_at_world_pos
 from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider
 from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 from aurora_engine.core.logging import get_logger
+from aurora_engine.ui.image import ImageWidget
+from aurora_engine.ui.widget import Label
 
 import numpy as np
 import json
@@ -29,14 +32,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = get_logger()
 
-class Rifted(Application):
+class AbyssalEternae(Application):
     """
     The Main RPG Game Application.
     """
 
     def initialize_game(self):
         """Game-specific initialization."""
-        logger.info("Initializing Rifted Game...")
+        logger.info("Initializing Abyssal Eternae Game...")
         # Initialize Database (MySQL)
         db_config = self.config.get('database', {})
         if not db_config:
@@ -44,7 +47,7 @@ class Rifted(Application):
                 'host': 'localhost',
                 'user': 'root',
                 'password': '',
-                'database': 'rifted_db',
+                'database': 'abyssal_eternae_db',
                 'port': 3306
             }
             
@@ -105,6 +108,9 @@ class Rifted(Application):
         player_system.camera_transform = camera.transform
         self.world.add_system(player_system)
         
+        # Add Player Action System
+        self.world.add_system(PlayerActionSystem(self.input))
+        
         self.world.add_system(FadeInSystem())
         
         # Pass player transform to DayNightCycle for shadow following
@@ -121,30 +127,93 @@ class Rifted(Application):
         self.pending_data: Dict[Tuple[int, int], object] = {} 
         self.pending_meshes: Dict[Tuple[int, int], object] = {} 
 
-        self.load_radius = 4 
-        self.unload_radius = 6
+        # Reduced load radius for performance (User requested)
+        self.load_radius = 2 
+        self.unload_radius = 4
         self.last_chunk_check = 0.0
         
         # Store current dimension ID
         self.current_dimension_id = None
+        
+        # Debug State
+        self.debug_panda_visible = False
+        self.debug_overlay_visible = True
+        self.debug_node_path = None
+        
+        # Input Debounce
+        self.f3_pressed = False
+        self.f4_pressed = False
 
         # Load Game World
         self._load_game_world()
         
         # Setup Sun/Moon Visuals
         self._setup_celestial_bodies()
+        
+        # Setup UI
+        self._setup_ui()
+        
+        # Setup Fog
+        self._setup_fog()
+
+    def _setup_fog(self):
+        """Setup distance fog for performance and atmosphere."""
+        from panda3d.core import Fog
+        fog = Fog("DistanceFog")
+        fog.setColor(0.53, 0.8, 0.92) # Sky blue
+        fog.setExpDensity(0.005) # Adjust density
+        
+        if hasattr(self.renderer.backend, 'scene_graph'):
+            self.renderer.backend.scene_graph.setFog(fog)
+
+    def _setup_ui(self):
+        """Initialize basic game UI."""
+        # Crosshair
+        crosshair = ImageWidget("Crosshair", "assets/ui/crosshair.png")
+        crosshair.size = np.array([32, 32], dtype=np.float32)
+        # Center of screen
+        w = self.config.get('rendering.width', 1280)
+        h = self.config.get('rendering.height', 720)
+        crosshair.position = np.array([w/2 - 16, h/2 - 16], dtype=np.float32)
+        self.ui.add_widget(crosshair, layer='overlay')
+        
+        # Health Bar (Background)
+        hp_bg = ImageWidget("HP_BG", "assets/ui/bar_bg.png")
+        hp_bg.size = np.array([300, 30], dtype=np.float32)
+        hp_bg.position = np.array([50, h - 50], dtype=np.float32)
+        hp_bg.color = (0.2, 0.2, 0.2, 0.8)
+        self.ui.add_widget(hp_bg, layer='hud')
+        
+        # Health Bar (Fill)
+        hp_fill = ImageWidget("HP_Fill", "assets/ui/bar_fill.png")
+        hp_fill.size = np.array([300, 30], dtype=np.float32)
+        hp_fill.position = np.array([50, h - 50], dtype=np.float32)
+        hp_fill.color = (0.8, 0.2, 0.2, 1.0)
+        self.ui.add_widget(hp_fill, layer='hud')
+        
+        # Minimap Frame
+        minimap = ImageWidget("Minimap", "assets/ui/minimap_frame.png")
+        minimap.size = np.array([200, 200], dtype=np.float32)
+        minimap.position = np.array([w - 220, 20], dtype=np.float32)
+        self.ui.add_widget(minimap, layer='hud')
+        
+        # Debug Info
+        self.debug_label = Label("DebugInfo", "FPS: 60")
+        self.debug_label.position = np.array([10, 10], dtype=np.float32)
+        self.ui.add_widget(self.debug_label, layer='overlay')
 
     def _setup_celestial_bodies(self):
         """Create visual entities for Sun and Moon."""
-        # Sun
+        # Sun (2D Plane, Far away)
         sun = self.world.create_entity()
         sun.add_component(Transform())
-        sun.add_component(MeshRenderer(mesh=create_cube_mesh(10.0), color=(1.0, 1.0, 0.8, 1.0))) # Placeholder sphere
+        # Use plane mesh for 2D look
+        sun.add_component(MeshRenderer(mesh=create_plane_mesh(200.0, 200.0), color=(1.0, 1.0, 0.8, 1.0))) 
         
-        # Moon
+        # Moon (2D Plane, Far away)
         moon = self.world.create_entity()
         moon.add_component(Transform())
-        moon.add_component(MeshRenderer(mesh=create_cube_mesh(8.0), color=(0.8, 0.8, 1.0, 1.0)))
+        moon.add_component(MeshRenderer(mesh=create_plane_mesh(150.0, 150.0), color=(0.8, 0.8, 1.0, 1.0)))
         
         # Pass entities to DayNightCycle system
         # We need to find the system first
@@ -152,6 +221,8 @@ class Rifted(Application):
             if isinstance(system, DayNightCycle):
                 system.sun_entity = sun
                 system.moon_entity = moon
+                # Adjust distance in system if needed, or just rely on system updating position
+                system.orbit_radius = 500.0 # Push them further away
                 break
 
     def update(self, dt: float, alpha: float):
@@ -171,6 +242,44 @@ class Rifted(Application):
             self.input.set_mouse_lock(False)
         elif self.input.is_key_down('mouse1') and not self.input.mouse_locked:
             self.input.set_mouse_lock(True)
+            
+        # Debug Toggles (Proper Debounce)
+        if self.input.is_key_down('f3'):
+            if not self.f3_pressed:
+                self.f3_pressed = True
+                self.debug_panda_visible = not self.debug_panda_visible
+                if hasattr(self.renderer.backend, 'base'):
+                    self.renderer.backend.base.setFrameRateMeter(self.debug_panda_visible)
+                    
+                    # Toggle wireframe and physics debug
+                    if self.debug_panda_visible:
+                        self.renderer.backend.base.render.setRenderModeWireframe()
+                        # Attach physics debug node
+                        if not self.debug_node_path:
+                            self.debug_node_path = self.physics.attach_debug_node(self.renderer.backend.scene_graph)
+                        if self.debug_node_path:
+                            self.debug_node_path.show()
+                    else:
+                        self.renderer.backend.base.render.clearRenderMode()
+                        if self.debug_node_path:
+                            self.debug_node_path.hide()
+        else:
+            self.f3_pressed = False
+            
+        if self.input.is_key_down('f4'):
+            if not self.f4_pressed:
+                self.f4_pressed = True
+                self.debug_overlay_visible = not self.debug_overlay_visible
+                if hasattr(self, 'debug_label'):
+                    self.debug_label.visible = self.debug_overlay_visible
+        else:
+            self.f4_pressed = False
+            
+        # Update Debug Info
+        if hasattr(self, 'debug_label') and self.debug_label.visible:
+            fps = 1.0 / dt if dt > 0 else 60.0
+            pos = self.player.get_component(Transform).get_world_position()
+            self.debug_label.text = f"FPS: {fps:.0f} | Pos: {pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}"
         
     def late_update(self, dt: float, alpha: float):
         """Update camera after physics."""
@@ -215,20 +324,28 @@ class Rifted(Application):
         player_pos = self.player.get_component(Transform).get_world_position()
         
         # 1. Determine needed chunks
-        all_needed = self.world_generator.get_chunks_in_radius(player_pos[0], player_pos[1], self.load_radius)
+        # We use a slightly larger radius for loading to prevent pop-in at the edge of fog
+        # But we strictly unload anything outside the unload radius
         
-        # Sort by distance to player
-        all_needed.sort(key=lambda c: (c[0]*100 - player_pos[0])**2 + (c[1]*100 - player_pos[1])**2)
-        needed_chunks = set(all_needed)
+        # Calculate camera frustum culling would be ideal, but for now distance-based is safer and simpler
+        # to ensure "whatever is not within render distance HAS to remain unloaded"
         
-        # 2. Unload distant chunks
+        # Current Chunk Coordinates
+        current_chunk_x = int(player_pos[0] / 100.0)
+        current_chunk_y = int(player_pos[1] / 100.0)
+        
+        needed_chunks = set()
+        for x in range(current_chunk_x - self.load_radius, current_chunk_x + self.load_radius + 1):
+            for y in range(current_chunk_y - self.load_radius, current_chunk_y + self.load_radius + 1):
+                # Check circular distance to avoid square loading pattern
+                if (x - current_chunk_x)**2 + (y - current_chunk_y)**2 <= self.load_radius**2:
+                    needed_chunks.add((x, y))
+        
+        # 2. Unload distant chunks (Strict Unload)
+        # Any chunk not in needed_chunks MUST be unloaded immediately
         chunks_to_unload = []
         for coords in self.loaded_chunks:
-            chunk_world_x = coords[0] * 100.0
-            chunk_world_y = coords[1] * 100.0
-            dist = np.sqrt((chunk_world_x - player_pos[0])**2 + (chunk_world_y - player_pos[1])**2)
-            
-            if dist > self.unload_radius * 100.0:
+            if coords not in needed_chunks:
                 chunks_to_unload.append(coords)
                 
         for coords in chunks_to_unload:
@@ -238,7 +355,10 @@ class Rifted(Application):
         max_concurrent_loads = 8
         current_loads = len(self.pending_data) + len(self.pending_meshes)
         
-        for coords in needed_chunks:
+        # Sort needed chunks by distance to player so closest load first
+        sorted_needed = sorted(list(needed_chunks), key=lambda c: (c[0]*100 - player_pos[0])**2 + (c[1]*100 - player_pos[1])**2)
+        
+        for coords in sorted_needed:
             if current_loads >= max_concurrent_loads:
                 break
                 
@@ -373,13 +493,13 @@ if __name__ == "__main__":
         'rendering': {
             'width': 1280,
             'height': 720,
-            'title': 'Rifted',
+            'title': 'Abyssal Eternae',
         },
         'database': {
             'host': 'localhost',
             'user': 'root',
             'password': 'CeneX_1234', # Set your MySQL password here
-            'database': 'rifted_db',
+            'database': 'abyssal_eternae_db',
             'port': 3306
         }
     }
@@ -388,5 +508,5 @@ if __name__ == "__main__":
     with open("config.json", "w") as f:
         json.dump(config_data, f, indent=2)
 
-    game = Rifted("config.json")
+    game = AbyssalEternae("config.json")
     game.run()
