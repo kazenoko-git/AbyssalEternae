@@ -78,7 +78,11 @@ class AbyssalEternae(Application):
         self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.glb"))
         
         # Add player physics
-        self.player.add_component(Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32))))
+        # Offset collider downwards to match visual mesh
+        collider = Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32)))
+        collider.offset = np.array([0.0, 0.0, 1.0], dtype=np.float32) # Center collider 1m up (since box is 2m tall)
+        self.player.add_component(collider)
+
         rb = self.player.add_component(RigidBody())
         rb.mass = 80.0 # Standard human mass
         rb.use_gravity = True

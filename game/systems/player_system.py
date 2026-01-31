@@ -117,7 +117,19 @@ class PlayerSystem(System):
             if has_input:
                 # Calculate target yaw (angle from X axis)
                 # We subtract PI/2 because our model faces +Y (Forward), but atan2 0 is +X.
-                target_yaw = np.arctan2(move_dir[1], move_dir[0]) - np.pi / 2.0
+                # FIX: The model was facing camera when W pressed.
+                # If W is pressed, input_vec[1] is +1.
+                # move_dir is forward.
+                # atan2(y, x) gives angle.
+                # If model faces +Y by default, then 0 rotation is +Y.
+                # atan2(1, 0) = PI/2.
+                # So we need PI/2 - PI/2 = 0.
+                # If model faces -Y (backwards), we need to rotate 180 deg (PI).
+                
+                # If the character is facing the camera when W is pressed, it means it's facing BACKWARDS relative to movement.
+                # So we need to add PI (180 degrees) to the rotation.
+                
+                target_yaw = np.arctan2(move_dir[1], move_dir[0]) - np.pi / 2.0 + np.pi
                 
                 # Construct target quaternion (Rotation around Z)
                 half_angle = target_yaw * 0.5
@@ -133,13 +145,6 @@ class PlayerSystem(System):
                 new_quat = quaternion_slerp(current_quat, target_quat, t)
                 
                 # Force upright constraint on new rotation
-                # This prevents the "continuous rotation" or tilting issue during movement
-                # We only want rotation around Z (Yaw)
-                # Extract Yaw from new_quat
-                # q = [x, y, z, w]
-                # If we assume upright, x and y should be 0.
-                # We can just zero them out and re-normalize.
-                
                 upright_quat = np.array([0.0, 0.0, new_quat[2], new_quat[3]], dtype=np.float32)
                 norm = np.linalg.norm(upright_quat)
                 if norm > 0.001:
