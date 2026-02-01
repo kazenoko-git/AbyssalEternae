@@ -5,9 +5,9 @@ from aurora_engine.rendering.animator import Animator
 from aurora_engine.rendering.mesh import MeshRenderer
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.resource import resolve_path
+from aurora_engine.utils.gltf_loader import load_gltf_fixed
 from direct.actor.Actor import Actor
-from panda3d.core import Point3, Texture, Material, NodePath, ColorAttrib, LightAttrib, TransparencyAttrib
-import os
+from panda3d.core import Point3, NodePath, ModelRoot
 
 logger = get_logger()
 
@@ -47,191 +47,109 @@ class AnimationSystem(System):
                     animator.next_clip = None
                     animator._play_backend(animator.current_clip)
                 else:
-                    # Blending in progress (Panda3D handles blending if we call enableBlend)
-                    # For simple implementation, we just switch for now or use Actor's blend
-                    # Panda3D Actor blending is complex. Let's stick to cross-fade if possible.
-                    # Actually, Actor.enableBlend() allows multiple anims.
+                    # Blending in progress
                     pass
             
             # Ensure playing state
             if animator.playing and animator.current_clip:
-                # Check if backend is actually playing?
                 # Panda Actor manages this.
                 pass
 
     def _initialize_actor(self, animator: Animator, mesh_renderer: MeshRenderer):
         """Convert static model to Actor for animation."""
         try:
-            # We need to replace the static NodePath with an Actor
-            # But MeshRenderer already loaded a model.
-            # If it's a GLB with embedded animations, we can load it as an Actor.
-            
             model_path = mesh_renderer.model_path
             if not model_path:
                 return
             
-            # Resolve model path
             model_path = resolve_path(model_path)
+            logger.info(f"Initializing Actor for {model_path}")
 
-            # Create Actor
-            # If animations are embedded, we pass the same file for anims
+            # 1. Load the main model using the fixed loader
+            # This ensures we get a valid ModelRoot with geometry
+            try:
+                # load_gltf_fixed returns a NodePath (wrapping ModelRoot)
+                model_node = load_gltf_fixed(self.backend.base.loader, model_path)
+            except Exception as e:
+                logger.error(f"Failed to load model for Actor: {e}")
+                raise
+
+            # 2. Load animations
+            # We need to load each animation file and pass the NodePath/ModelRoot to Actor
             anims = {}
             for name, clip in animator.clips.items():
                 if clip.path:
-                    # Resolve animation path
-                    anims[name] = resolve_path(clip.path)
-                else:
-                    # Assume embedded, use main model path
-                    # Note: Panda3D GLTF loader usually exposes embedded anims automatically
-                    # if loaded as Actor.
-                    pass
-            
-            # If no explicit paths, we assume embedded.
-            # For GLTF, we just pass the model path.
-            
-            # Load Actor
-            # Note: We need to use the same loader logic (custom GLTF loader) if possible
-            # But Actor uses loader.loadModel internally.
-            # We might need to load the model first using our custom loader, then pass NodePath to Actor?
-            # Actor(models, anims, other=None)
-            # It accepts a NodePath as 'other' or 'models'.
-            
-            # Let's try loading using our custom loader first
-            from aurora_engine.utils.gltf_loader import load_gltf_fixed
-            
-            # Load main model
-            # Check if it's GLTF/GLB
-            if model_path.lower().endswith('.glb') or model_path.lower().endswith('.gltf'):
-                model_node = load_gltf_fixed(self.backend.base.loader, model_path)
-            else:
-                model_node = self.backend.base.loader.loadModel(model_path)
-            
-            # DEBUG: Print model node hierarchy
-            logger.info(f"Model Node Hierarchy for {model_path}:")
-            model_node.ls()
-            
-            # Load separate animation files if any
-            loaded_anims = {}
-            for name, path in anims.items():
-                # If path is same as model, it's embedded (or just reusing file)
-                # If path is different, load it
-                if path != model_path:
-                    # Check if it's GLTF/GLB
-                    if path.lower().endswith('.glb') or path.lower().endswith('.gltf'):
-                        loaded_anims[name] = load_gltf_fixed(self.backend.base.loader, path)
+                    anim_path = resolve_path(clip.path)
+                    if anim_path != model_path:
+                        try:
+                            # Load animation file using fixed loader
+                            anim_node = load_gltf_fixed(self.backend.base.loader, anim_path)
+                            anims[name] = anim_node
+                        except Exception as e:
+                            logger.warning(f"Failed to load animation '{name}' from {anim_path}: {e}")
                     else:
-                        # Try standard loader
-                        loaded_anims[name] = path 
+                        # Embedded animation
+                        anims[name] = model_path # Actor can handle path string for embedded if same file
                 else:
-                    loaded_anims[name] = path
+                    # Implicitly embedded
+                    anims[name] = model_path
 
-            # If we have loaded nodes for animations, pass them directly
-            # Actor supports dictionary of NodePaths for anims
+            # 3. Create Actor
+            # We pass the pre-loaded model_node as the model
+            actor = Actor(model_node, anims)
             
-            try:
-                actor = Actor(model_node, loaded_anims)
-                actor.reparentTo(self.backend.scene_graph)
-                
-                # --- AUTO-SCALE & CENTER LOGIC (Copied from Renderer) ---
-                # Get bounds to estimate size
-                min_pt, max_pt = actor.getTightBounds()
-                size = max_pt - min_pt
-                max_dim = max(size.getX(), size.getY(), size.getZ())
-                
-                logger.info(f"Actor Bounds: {min_pt} to {max_pt}. Max Dim: {max_dim}")
-                
-                # Center the model (Pivot at bottom center)
-                bottom_center = Point3((min_pt.getX() + max_pt.getX()) / 2.0,
-                                       (min_pt.getY() + max_pt.getY()) / 2.0,
-                                       min_pt.getZ())
-                
-                # Offset to bring bottom center to (0,0,0)
-                # We apply this to the geometry inside the Actor, not the Actor itself
-                # The Actor itself is moved by the Transform component.
-                # So we need to bake this offset into the actor's geometry node.
-                # actor.getGeomNode().setPos(-bottom_center) # This might break animations if root bone is moved?
-                
-                # Safer: Just set pos on actor and let flattenLight bake it? 
-                # Actor.flattenLight() is dangerous with animations.
-                
-                # Instead, let's just apply scale if it's crazy.
-                scale_factor = 1.0
-                if max_dim > 10.0:
-                    scale_factor = 2.0 / max_dim
-                    logger.info(f"Auto-scaled massive Actor by {scale_factor:.4f}")
-                elif max_dim < 0.1 and max_dim > 0:
-                    scale_factor = 2.0 / max_dim
-                    logger.info(f"Auto-scaled tiny Actor by {scale_factor:.4f}")
-                    
-                if scale_factor != 1.0:
-                    actor.setScale(scale_factor)
-                    
-                # --- FORCE VISIBILITY & MATERIAL ---
-                actor.show()
-                
-                # Override attributes with priority 1
-                actor.setColor(1, 1, 1, 1, 1) # Priority 1
-                actor.setLightOff(1) # Priority 1
-                
-                # Disable Transparency explicitly
-                actor.setTransparency(TransparencyAttrib.M_none, 1)
-                
-                # Disable Backface Culling (Two Sided)
-                actor.setTwoSided(True)
-                
-                # Clear existing attributes if possible
-                actor.clearColor()
-                actor.clearColorScale()
-                actor.clearMaterial()
-                actor.clearTexture()
-                
-                # DEBUG: Print hierarchy
-                logger.info("Actor Hierarchy:")
-                actor.ls()
-                
-                # Check if Actor is empty (no children)
-                if actor.getNumChildren() == 0:
-                    logger.error("Actor has no children! Reverting to static model.")
-                    actor.removeNode()
-                    raise RuntimeError("Actor creation resulted in empty node.")
+            # 4. Fix Hierarchy & Visibility
+            # The Actor wraps the model. We need to ensure the geometry is found.
+            # Sometimes GLTF loaders put geometry deep in the hierarchy.
+            
+            # Reparent to scene graph
+            actor.reparentTo(self.backend.scene_graph)
+            
+            # 5. Hide Debug Geometry (Colliders)
+            # Look for nodes with "Collider" in the name and hide them
+            colliders = actor.findAllMatches("**/+GeomNode")
+            for node in colliders:
+                if "Collider" in node.getName():
+                    node.hide()
+                    # logger.debug(f"Hidden debug geometry: {node.getName()}")
+            
+            # Also check for nodes named "Collider" directly (even if not GeomNode)
+            colliders_nodes = actor.findAllMatches("**/*Collider*")
+            for node in colliders_nodes:
+                node.hide()
+                # logger.debug(f"Hidden debug node: {node.getName()}")
 
-                # Detach static node ONLY if Actor creation succeeded
-                if mesh_renderer._node_path:
-                    mesh_renderer._node_path.removeNode()
+            # 6. Replace static mesh node
+            # If MeshRenderer had a static node, remove it
+            if mesh_renderer._node_path:
+                mesh_renderer._node_path.removeNode()
+            
+            # Update MeshRenderer to point to the Actor
+            mesh_renderer._node_path = actor
+            animator._actor = actor
+            
+            # 7. Ensure Visibility
+            actor.show()
+            
+            # 8. Start default animation
+            if animator.current_clip:
+                animator._play_backend(animator.current_clip)
                 
-                # Sync transform
-                # MeshRenderer will update transform of _node_path.
-                # So we set _node_path to the Actor.
-                mesh_renderer._node_path = actor
-                animator._actor = actor
-                
-                logger.info(f"Initialized Actor for {model_path}")
-                
-                # Verify animations
-                for name in animator.clips:
-                    # Actor.getAnimControl returns None if anim not found/loaded
-                    if not actor.getAnimControl(name):
-                        logger.warning(f"Animation '{name}' failed to load or bind. Check file format (FBX 2011-2013 recommended) or path.")
-                    else:
-                        logger.info(f"Animation '{name}' loaded successfully.")
-                
-                # Start default animation if set
-                if animator.current_clip:
-                    animator._play_backend(animator.current_clip)
-            except Exception as e:
-                logger.error(f"Actor creation failed: {e}")
-                animator._init_failed = True
-                
-                # CRITICAL FIX: Ensure static model is visible if Actor failed
-                if mesh_renderer._node_path:
-                    mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
-                    mesh_renderer._node_path.show()
-                    logger.info("Reverted to static model due to animation failure.")
-                
+            logger.info(f"Actor initialized successfully with {len(anims)} animations.")
+
         except Exception as e:
             logger.error(f"Failed to initialize Actor: {e}")
             animator._init_failed = True
-            # Ensure static model is visible
-            if mesh_renderer._node_path:
-                mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
-                mesh_renderer._node_path.show()
+            
+            # Fallback: Ensure static model is visible if Actor failed
+            # We might need to reload the static model if we removed it, 
+            # but here we just assume if we failed before removing, it's fine.
+            # If we failed after removing, we should try to restore.
+            if mesh_renderer._node_path and mesh_renderer._node_path.isEmpty():
+                 # Reload static
+                 try:
+                     static_model = load_gltf_fixed(self.backend.base.loader, model_path)
+                     mesh_renderer._node_path = static_model
+                     mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
+                 except:
+                     pass

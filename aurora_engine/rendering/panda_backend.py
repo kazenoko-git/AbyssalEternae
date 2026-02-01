@@ -157,6 +157,17 @@ class PandaBackend:
                                     acc['bufferView'] = 0
                         return gltf._converter.GltfConverter._original_load_primitive(self, node, gltf_primitive, gltf_mesh, gltf_data, *args, **kwargs)
                     raise e
+            
+            # --- PATCH SORTING KEYERROR ---
+            # The traceback shows the error happens in a lambda inside load_primitive (or called by it)
+            # specifically: accessors = sorted(accessors, key=lambda x: x['bufferView'])
+            # We need to patch GltfConverter.load_primitive to catch this specific sort error if possible,
+            # OR patch the data before it gets there.
+            # Since we are already patching update/load_model to inject bufferView=0, it SHOULD work.
+            # But maybe the data structure is nested or copied?
+            
+            # Let's try to patch the lambda? No, that's hard.
+            # Let's ensure 'bufferView' is present in ALL accessors recursively.
 
             # --- Apply Patches ---
 

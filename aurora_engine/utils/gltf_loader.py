@@ -1,16 +1,17 @@
 import json
 import struct
 import os
-import time
-from panda3d.core import Filename
+import uuid
+from panda3d.core import Filename, ModelRoot, NodePath
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
 
-def load_gltf_fixed(loader, file_path):
+def load_gltf_fixed(loader, file_path: str) -> NodePath:
     """
     Custom GLTF loader that fixes common issues (like missing bufferView)
     by rewriting the file to a temporary location and loading that.
+    Returns a NodePath wrapping the loaded model.
     """
     # Resolve absolute path
     if not os.path.isabs(file_path):
@@ -19,25 +20,45 @@ def load_gltf_fixed(loader, file_path):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
         
-    logger.info(f"Loading GLTF/GLB with custom fixer (Repack Mode): {file_path}")
-        
-    # Read file header to determine type
+    # Generate a unique temp path to avoid collisions
+    temp_filename = f"{os.path.basename(file_path)}.{uuid.uuid4().hex}.fixed"
+    temp_dir = os.path.dirname(file_path) # Keep in same dir to resolve relative assets if any
+    temp_path = os.path.join(temp_dir, temp_filename)
+    
+    # Determine extension for temp file
+    is_glb = False
     with open(file_path, 'rb') as f:
         header = f.read(4)
-        
-    try:
         if header == b'glTF':
-            # It's a GLB file
-            return _load_glb_repack(loader, file_path)
+            is_glb = True
+            temp_path += ".glb"
         else:
-            # Assume GLTF (JSON)
-            return _load_gltf_json_repack(loader, file_path)
-    except Exception as e:
-        logger.error(f"Failed to repack/load GLTF: {e}")
-        raise
+            temp_path += ".gltf"
 
-def _load_glb_repack(loader, file_path):
-    with open(file_path, 'rb') as f:
+    try:
+        if is_glb:
+            _process_glb(file_path, temp_path)
+        else:
+            _process_gltf(file_path, temp_path)
+            
+        # Load the fixed file
+        p3d_path = Filename.fromOsSpecific(temp_path)
+        model = loader.loadModel(p3d_path)
+        return model
+        
+    except Exception as e:
+        logger.error(f"Failed to load fixed GLTF {file_path}: {e}")
+        raise
+    finally:
+        # Cleanup temp file
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception as e:
+                logger.warning(f"Could not remove temp file {temp_path}: {e}")
+
+def _process_glb(input_path, output_path):
+    with open(input_path, 'rb') as f:
         data = f.read()
         
     # Parse GLB Header
@@ -60,8 +81,7 @@ def _load_glb_repack(loader, file_path):
                 json_str = chunk_data.decode('utf-8')
                 json_data = json.loads(json_str)
             except Exception as e:
-                logger.error(f"Failed to parse GLB JSON: {e}")
-                raise
+                raise ValueError(f"Failed to parse GLB JSON: {e}")
         elif chunk_type == 0x004E4942: # BIN
             binary_body = chunk_data
             
@@ -70,50 +90,21 @@ def _load_glb_repack(loader, file_path):
     if json_data is None:
         raise ValueError("GLB file missing JSON chunk")
         
-    # --- FIXES ---
+    # Apply fixes
     _apply_fixes(json_data)
     
-    # --- REPACK ---
-    temp_path = file_path + ".fixed.glb"
-    _write_glb(json_data, binary_body, temp_path)
-    
-    try:
-        # Load the fixed file
-        # Convert to Panda filename
-        p3d_path = Filename.fromOsSpecific(temp_path)
-        model = loader.loadModel(p3d_path)
-        return model
-    finally:
-        # Cleanup
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                logger.warning(f"Could not remove temp file: {temp_path}")
+    # Write GLB
+    _write_glb(json_data, binary_body, output_path)
 
-def _load_gltf_json_repack(loader, file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
+def _process_gltf(input_path, output_path):
+    with open(input_path, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
         
-    # --- FIXES ---
+    # Apply fixes
     _apply_fixes(json_data)
     
-    # --- REPACK ---
-    temp_path = file_path + ".fixed.gltf"
-    
-    with open(temp_path, 'w', encoding='utf-8') as f:
+    with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(json_data, f)
-        
-    try:
-        p3d_path = Filename.fromOsSpecific(temp_path)
-        model = loader.loadModel(p3d_path)
-        return model
-    finally:
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                logger.warning(f"Could not remove temp file: {temp_path}")
 
 def _apply_fixes(json_data):
     """Apply known fixes to GLTF data."""
@@ -145,20 +136,16 @@ def _apply_fixes(json_data):
             "buffer": 0,
             "byteOffset": 0,
             "byteLength": 0,
-            "byteStride": 0 # Added byteStride to prevent KeyError
+            "byteStride": 0 
         })
-        logger.info(f"Created dummy bufferView at index {dummy_bv_index}")
+        # logger.debug(f"Created dummy bufferView at index {dummy_bv_index}")
 
     if 'accessors' in json_data:
-        fixed_count = 0
         for acc in json_data['accessors']:
             if 'bufferView' not in acc:
                 acc['bufferView'] = dummy_bv_index
                 if 'byteOffset' not in acc:
                     acc['byteOffset'] = 0
-                fixed_count += 1
-        if fixed_count > 0:
-            logger.info(f"Fixed {fixed_count} accessors missing bufferView")
 
 def _write_glb(json_data, binary_body, output_path):
     """Write GLB file."""
