@@ -6,6 +6,7 @@ from aurora_engine.rendering.mesh import MeshRenderer
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.resource import resolve_path
 from direct.actor.Actor import Actor
+from panda3d.core import Point3, Texture, Material, NodePath, ColorAttrib, LightAttrib, TransparencyAttrib
 import os
 
 logger = get_logger()
@@ -105,6 +106,10 @@ class AnimationSystem(System):
             else:
                 model_node = self.backend.base.loader.loadModel(model_path)
             
+            # DEBUG: Print model node hierarchy
+            logger.info(f"Model Node Hierarchy for {model_path}:")
+            model_node.ls()
+            
             # Load separate animation files if any
             loaded_anims = {}
             for name, path in anims.items():
@@ -116,7 +121,6 @@ class AnimationSystem(System):
                         loaded_anims[name] = load_gltf_fixed(self.backend.base.loader, path)
                     else:
                         # Try standard loader
-                        # We revert the forced custom loader for FBX because it failed (utf-8 error)
                         loaded_anims[name] = path 
                 else:
                     loaded_anims[name] = path
@@ -128,6 +132,69 @@ class AnimationSystem(System):
                 actor = Actor(model_node, loaded_anims)
                 actor.reparentTo(self.backend.scene_graph)
                 
+                # --- AUTO-SCALE & CENTER LOGIC (Copied from Renderer) ---
+                # Get bounds to estimate size
+                min_pt, max_pt = actor.getTightBounds()
+                size = max_pt - min_pt
+                max_dim = max(size.getX(), size.getY(), size.getZ())
+                
+                logger.info(f"Actor Bounds: {min_pt} to {max_pt}. Max Dim: {max_dim}")
+                
+                # Center the model (Pivot at bottom center)
+                bottom_center = Point3((min_pt.getX() + max_pt.getX()) / 2.0,
+                                       (min_pt.getY() + max_pt.getY()) / 2.0,
+                                       min_pt.getZ())
+                
+                # Offset to bring bottom center to (0,0,0)
+                # We apply this to the geometry inside the Actor, not the Actor itself
+                # The Actor itself is moved by the Transform component.
+                # So we need to bake this offset into the actor's geometry node.
+                # actor.getGeomNode().setPos(-bottom_center) # This might break animations if root bone is moved?
+                
+                # Safer: Just set pos on actor and let flattenLight bake it? 
+                # Actor.flattenLight() is dangerous with animations.
+                
+                # Instead, let's just apply scale if it's crazy.
+                scale_factor = 1.0
+                if max_dim > 10.0:
+                    scale_factor = 2.0 / max_dim
+                    logger.info(f"Auto-scaled massive Actor by {scale_factor:.4f}")
+                elif max_dim < 0.1 and max_dim > 0:
+                    scale_factor = 2.0 / max_dim
+                    logger.info(f"Auto-scaled tiny Actor by {scale_factor:.4f}")
+                    
+                if scale_factor != 1.0:
+                    actor.setScale(scale_factor)
+                    
+                # --- FORCE VISIBILITY & MATERIAL ---
+                actor.show()
+                
+                # Override attributes with priority 1
+                actor.setColor(1, 1, 1, 1, 1) # Priority 1
+                actor.setLightOff(1) # Priority 1
+                
+                # Disable Transparency explicitly
+                actor.setTransparency(TransparencyAttrib.M_none, 1)
+                
+                # Disable Backface Culling (Two Sided)
+                actor.setTwoSided(True)
+                
+                # Clear existing attributes if possible
+                actor.clearColor()
+                actor.clearColorScale()
+                actor.clearMaterial()
+                actor.clearTexture()
+                
+                # DEBUG: Print hierarchy
+                logger.info("Actor Hierarchy:")
+                actor.ls()
+                
+                # Check if Actor is empty (no children)
+                if actor.getNumChildren() == 0:
+                    logger.error("Actor has no children! Reverting to static model.")
+                    actor.removeNode()
+                    raise RuntimeError("Actor creation resulted in empty node.")
+
                 # Detach static node ONLY if Actor creation succeeded
                 if mesh_renderer._node_path:
                     mesh_renderer._node_path.removeNode()
@@ -137,10 +204,6 @@ class AnimationSystem(System):
                 # So we set _node_path to the Actor.
                 mesh_renderer._node_path = actor
                 animator._actor = actor
-                
-                # Apply scale/pos fixes from MeshRenderer logic if needed
-                # (The massive FBX fix logic is in Renderer, we might need to replicate or share it)
-                # For now, assume Renderer handles transform updates on the _node_path (which is now the Actor)
                 
                 logger.info(f"Initialized Actor for {model_path}")
                 
@@ -160,14 +223,6 @@ class AnimationSystem(System):
                 animator._init_failed = True
                 
                 # CRITICAL FIX: Ensure static model is visible if Actor failed
-                if mesh_renderer._node_path and mesh_renderer._node_path.isEmpty():
-                    # If it was removed or invalid, we might need to reload or re-show?
-                    # But we only remove it AFTER actor creation succeeds.
-                    # So if we are here, mesh_renderer._node_path should still be the static model.
-                    # Just ensure it's reparented to scene graph if it was detached?
-                    # It shouldn't have been detached yet.
-                    pass
-                
                 if mesh_renderer._node_path:
                     mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
                     mesh_renderer._node_path.show()

@@ -80,14 +80,13 @@ class AbyssalEternae(Application):
         
         # Add player animation
         animator = self.player.add_component(Animator())
-        # Using separate FBX files for animations
-        # Assuming they are in the same directory
+        # Using separate GLB files for animations
         base_path = "assets/characters/playable/maleMC/"
         
         # Note: Ensure these files exist and match the case exactly
-        animator.add_clip("Idle", path=base_path + "idle.fbx", speed=1.0)
-        animator.add_clip("Walk", path=base_path + "walk.fbx", speed=1.2)
-        animator.add_clip("Run", path=base_path + "run.fbx", speed=1.5)
+        animator.add_clip("Idle", path=base_path + "idle.glb", speed=1.0)
+        animator.add_clip("Walk", path=base_path + "walk.glb", speed=1.2)
+        animator.add_clip("Run", path=base_path + "run.glb", speed=1.5)
         
         animator.play("Idle")
         

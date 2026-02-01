@@ -24,6 +24,7 @@ class PlayerSystem(System):
         self.camera_transform = None 
         self.rotation_speed = 10.0 # Radians per second
         self.logger.info("PlayerSystem initialized")
+        self.log_timer = 0.0
 
     def get_required_components(self):
         return [Transform, PlayerController, RigidBody]
@@ -57,6 +58,13 @@ class PlayerSystem(System):
             controller = entity.get_component(PlayerController)
             rigidbody = entity.get_component(RigidBody)
             animator = entity.get_component(Animator)
+            
+            # Debug Log Position
+            self.log_timer += dt
+            if self.log_timer > 1.0:
+                pos = transform.get_world_position()
+                self.logger.info(f"Player Pos: {pos}")
+                self.log_timer = 0.0
 
             # Update Controller State
             controller.is_sprinting = sprint
