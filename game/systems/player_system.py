@@ -7,6 +7,7 @@ from game.components.player import PlayerController
 from aurora_engine.input.input_manager import InputManager
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.math import quaternion_slerp
+from aurora_engine.rendering.animator import Animator
 import numpy as np
 
 
@@ -55,6 +56,7 @@ class PlayerSystem(System):
             transform = entity.get_component(Transform)
             controller = entity.get_component(PlayerController)
             rigidbody = entity.get_component(RigidBody)
+            animator = entity.get_component(Animator)
 
             # Update Controller State
             controller.is_sprinting = sprint
@@ -160,3 +162,13 @@ class PlayerSystem(System):
                 if norm > 0.001:
                     upright_quat /= norm
                     transform.local_rotation = upright_quat
+            
+            # Animation Logic
+            if animator:
+                if has_input:
+                    if sprint:
+                        animator.play("Run", blend=0.2)
+                    else:
+                        animator.play("Walk", blend=0.2)
+                else:
+                    animator.play("Idle", blend=0.2)

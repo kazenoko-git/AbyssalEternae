@@ -132,20 +132,9 @@ class Renderer:
                 try:
                     model_path = mesh_renderer.model_path
                     
-                    # If relative path, try to resolve it against CWD and parent dirs
-                    if not os.path.isabs(model_path):
-                        # 1. Try current directory
-                        if os.path.exists(model_path):
-                            model_path = os.path.abspath(model_path)
-                        # 2. Try one level up (Project Root if running from game/)
-                        elif os.path.exists(os.path.join("..", model_path)):
-                            model_path = os.path.abspath(os.path.join("..", model_path))
-                        # 3. Try two levels up just in case
-                        elif os.path.exists(os.path.join("../..", model_path)):
-                            model_path = os.path.abspath(os.path.join("../..", model_path))
-                        else:
-                            # Default to abspath if not found, maybe Panda loader can find it via Config path
-                            model_path = os.path.abspath(model_path)
+                    # Resolve path using utility
+                    from aurora_engine.utils.resource import resolve_path
+                    model_path = resolve_path(model_path)
                     
                     # Add directory to model path so textures can be found
                     # Use global getModelPath() instead of loader instance method
@@ -218,14 +207,8 @@ class Renderer:
                 if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
                     try:
                         # Resolve texture path similarly
-                        tex_path = mesh_renderer.texture_path
-                        if not os.path.isabs(tex_path):
-                            if os.path.exists(tex_path):
-                                tex_path = os.path.abspath(tex_path)
-                            elif os.path.exists(os.path.join("..", tex_path)):
-                                tex_path = os.path.abspath(os.path.join("..", tex_path))
-                            elif os.path.exists(os.path.join("../..", tex_path)):
-                                tex_path = os.path.abspath(os.path.join("../..", tex_path))
+                        from aurora_engine.utils.resource import resolve_path
+                        tex_path = resolve_path(mesh_renderer.texture_path)
                         
                         tex_path = tex_path.replace('\\', '/')
                         tex = self.backend.base.loader.loadTexture(tex_path)

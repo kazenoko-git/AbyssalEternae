@@ -226,6 +226,7 @@ __marimo__/
 *.obj
 *.fbx
 *.stl
+*.blend
 
 # MacOS bs
 .DS_Store

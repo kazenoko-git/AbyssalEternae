@@ -6,7 +6,7 @@ import os
 from game.utils.terrain import create_terrain_mesh_from_heightmap
 from game.utils.tree_generator import create_procedural_tree_mesh
 from game.utils.rock_generator import create_procedural_rock_mesh
-from game.world_gen.structure_generator import StructureGenerator
+from game.systems.world_gen.structure_generator import StructureGenerator
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
 

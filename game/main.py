@@ -21,6 +21,7 @@ from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 from aurora_engine.core.logging import get_logger
 from aurora_engine.ui.image import ImageWidget
 from aurora_engine.ui.widget import Label
+from aurora_engine.rendering.animator import Animator
 
 import numpy as np
 import json
@@ -75,12 +76,26 @@ class AbyssalEternae(Application):
 
         # Add player visual
         # Using FBX as it is more reliable with current loader setup (auto-scaled and textured)
-        self.player.add_component(MeshRenderer(model_path="assets/characters/maleMC.glb"))
+        self.player.add_component(MeshRenderer(model_path="assets/characters/playable/maleMC/maleMC.glb"))
+        
+        # Add player animation
+        animator = self.player.add_component(Animator())
+        # Using separate FBX files for animations
+        # Assuming they are in the same directory
+        base_path = "assets/characters/playable/maleMC/"
+        
+        # Note: Ensure these files exist and match the case exactly
+        animator.add_clip("Idle", path=base_path + "idle.fbx", speed=1.0)
+        animator.add_clip("Walk", path=base_path + "walk.fbx", speed=1.2)
+        animator.add_clip("Run", path=base_path + "run.fbx", speed=1.5)
+        
+        animator.play("Idle")
         
         # Add player physics
-        # Offset collider downwards to match visual mesh
-        collider = Collider(BoxCollider(np.array([1.0, 1.0, 2.0], dtype=np.float32)))
-        collider.offset = np.array([0.0, 0.0, 1.0], dtype=np.float32) # Center collider 1m up (since box is 2m tall)
+        # Tighter collider to match character model (approx 1.8m tall, 0.5m wide)
+        collider = Collider(BoxCollider(np.array([0.5, 0.5, 1.8], dtype=np.float32)))
+        # Offset center up by half height (0.9) so bottom is at 0
+        collider.offset = np.array([0.0, 0.0, 0.9], dtype=np.float32) 
         self.player.add_component(collider)
 
         rb = self.player.add_component(RigidBody())
