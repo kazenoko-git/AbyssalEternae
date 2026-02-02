@@ -8,7 +8,7 @@ from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.resource import resolve_path
 from aurora_engine.utils.gltf_loader import load_gltf_fixed
 from direct.actor.Actor import Actor
-from panda3d.core import Point3, NodePath, ModelRoot, BoundingBox, Filename, Character, RenderModeAttrib
+from panda3d.core import Point3, NodePath, ModelRoot, BoundingBox, Filename, Character, RenderModeAttrib, Texture
 
 logger = get_logger()
 
@@ -158,7 +158,12 @@ class AnimationSystem(System):
             # 8. Ensure Visibility & Debug Attributes
             actor.show()
             
-            # --- NUCLEAR DEBUG OPTION ---
+            # --- VISIBILITY FIXES (NUCLEAR OPTION RE-ENABLED) ---
+            # The user reported "STILL NOT RENDERING" after re-enabling shaders.
+            # So we go back to the configuration that WORKED (ShaderOff + LightOff).
+            
+            logger.info("Applying NUCLEAR visibility fixes (ShaderOff, LightOff, TwoSided, Opaque)")
+            
             # 1. Disable Shader (Use Fixed Function)
             actor.setShaderOff(1)
             # 2. Disable Lighting (Full Bright)
@@ -171,12 +176,15 @@ class AnimationSystem(System):
             actor.clearColorScale()
             actor.setColor(1, 1, 1, 1)
             
-            logger.info("DEBUG: Applied 'Nuclear' visibility settings (ShaderOff, LightOff, TwoSided, Opaque)")
-            
-            # Log Render State of first GeomNode
-            if geom_nodes:
-                gn = geom_nodes[0]
-                logger.info(f"Debug: GeomNode '{gn.getName()}' State: {gn.getNetState()}")
+            # Check textures
+            tex = actor.findTexture("*")
+            if tex:
+                logger.info(f"Found texture on actor: {tex.getName()}")
+            else:
+                logger.warning("No texture found on actor. It might be white/black.")
+                # Try to load a default texture if none exists?
+                # For now, just let it be white.
+
             
             # --- CRITICAL FIX: FORCE SCALE AND POSITION ---
             min_pt, max_pt = actor.getTightBounds()
@@ -201,13 +209,12 @@ class AnimationSystem(System):
                 actor.setScale(scale_factor)
                 
             # 9. Start default animation
-            # DISABLED FOR DEBUGGING - CHECK BIND POSE
             if animator.current_clip and animator.current_clip in anim_files:
-                 logger.info(f"Animation '{animator.current_clip}' loaded but NOT playing (Debug Mode).")
-                 # try:
-                 #     animator._play_backend(animator.current_clip)
-                 # except Exception as e:
-                 #     logger.error(f"Failed to play animation {animator.current_clip}: {e}")
+                 logger.info(f"Starting animation: {animator.current_clip}")
+                 try:
+                     animator._play_backend(animator.current_clip)
+                 except Exception as e:
+                     logger.error(f"Failed to play animation {animator.current_clip}: {e}")
             else:
                 logger.info("No default animation playing (Bind Pose).")
                 
