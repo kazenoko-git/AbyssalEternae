@@ -44,7 +44,12 @@ class Animator(Component):
             logger.warning(f"Animation clip '{name}' not found.")
             return
 
-        if self.current_clip == name and not force:
+        # If we are already playing this clip fully, do nothing
+        if self.current_clip == name and self.next_clip is None and not force:
+            return
+            
+        # If we are already blending TO this clip, do nothing (don't reset timer!)
+        if self.next_clip == name and not force:
             return
 
         if self.current_clip is None:
@@ -59,19 +64,18 @@ class Animator(Component):
             self.blend_timer = 0.0
             # Backend blending logic handled in system
             if self._actor:
-                # Use Panda3D's built-in blending if available or just crossfade
-                # For now, we just switch, but AnimationSystem can handle smooth blending if implemented
-                # Simple crossfade implementation:
                 self._actor.enableBlend()
-                self._actor.setControlEffect(self.current_clip, 1.0)
-                self._actor.setControlEffect(self.next_clip, 0.0)
-                
+                # Start the new animation but with 0 weight initially
+                # We need to make sure it's playing so we can blend to it
                 clip = self.clips[self.next_clip]
                 self._actor.setPlayRate(clip.speed, self.next_clip)
                 if clip.loop:
                     self._actor.loop(self.next_clip)
                 else:
                     self._actor.play(self.next_clip)
+                    
+                self._actor.setControlEffect(self.current_clip, 1.0)
+                self._actor.setControlEffect(self.next_clip, 0.0)
             
         self.playing = True
 
@@ -86,6 +90,9 @@ class Animator(Component):
         """Internal: Trigger backend playback."""
         if not self._actor:
             return
+            
+        # Ensure we exit blend mode when playing a single animation
+        self._actor.disableBlend()
             
         clip = self.clips[name]
         self._actor.setPlayRate(clip.speed, name)

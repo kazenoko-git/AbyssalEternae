@@ -84,6 +84,7 @@ class AbyssalEternae(Application):
         base_path = "assets/characters/playable/maleMC/"
         
         # Note: Ensure these files exist and match the case exactly
+        # REVERTED: Back to logical mapping. We will debug the logic instead of swapping files blindly.
         animator.add_clip("Idle", path=base_path + "idle.glb", speed=1.0)
         animator.add_clip("Walk", path=base_path + "walk.glb", speed=1.2)
         animator.add_clip("Run", path=base_path + "run.glb", speed=1.5)

@@ -1,6 +1,7 @@
 # aurora_engine/rendering/animation_system.py
 
 import os
+import sys
 from aurora_engine.ecs.system import System
 from aurora_engine.rendering.animator import Animator
 from aurora_engine.rendering.mesh import MeshRenderer
@@ -55,16 +56,25 @@ class AnimationSystem(System):
                 animator.blend_timer += dt
                 if animator.blend_timer >= animator.blend_duration:
                     # Blend complete
+                    prev_clip = animator.current_clip
                     animator.current_clip = animator.next_clip
                     animator.next_clip = None
+                    
+                    # Stop previous clip to save resources
+                    if prev_clip:
+                        animator._actor.stop(prev_clip)
+                        
                     animator._play_backend(animator.current_clip)
                 else:
                     # Blending in progress
-                    pass
+                    alpha = animator.blend_timer / animator.blend_duration
+                    # Linear blend
+                    animator._actor.setControlEffect(animator.current_clip, 1.0 - alpha)
+                    animator._actor.setControlEffect(animator.next_clip, alpha)
             
             # Ensure playing state
-            if animator.playing and animator.current_clip:
-                # Panda Actor manages this.
+            if animator.playing and animator.current_clip and not animator.next_clip:
+                # Panda Actor manages this, but we might want to ensure loop is active
                 pass
 
     def _initialize_actor(self, animator: Animator, mesh_renderer: MeshRenderer):
@@ -126,8 +136,28 @@ class AnimationSystem(System):
                 logger.info(f"Loading animations: {list(anim_files.keys())}")
                 try:
                     actor.loadAnims(anim_files)
+                    
+                    # --- FIX LAG SPIKE: PRE-BIND ANIMATIONS ---
+                    # Force Panda3D to bind the animations to the joints NOW, 
+                    # instead of lazily doing it on the first frame of playback.
+                    logger.info("Pre-binding animations to prevent runtime lag...")
+                    actor.bindAllAnims()
+                    logger.info("Animations bound.")
+                    
+                    # --- DEBUG: LIST LOADED ANIMATIONS ---
+                    logger.info("--- Loaded Animations ---")
+                    for anim_name in actor.getAnimNames():
+                        duration = actor.getDuration(anim_name)
+                        msg = f"  - '{anim_name}': {duration:.4f}s"
+                        logger.info(msg)
+                        
+                        # Check if animation is empty
+                        if duration <= 0.0:
+                            logger.warning(f"    WARNING: Animation '{anim_name}' has ZERO duration!")
+                    logger.info("-------------------------")
+                    
                 except Exception as e:
-                    logger.error(f"Failed to load animations: {e}")
+                    logger.error(f"Failed to load/bind animations: {e}")
             
             # --- DEBUG: INSPECT ACTOR ---
             logger.info(f"Actor initialized. Node: {actor.getName()}")
@@ -159,8 +189,7 @@ class AnimationSystem(System):
             actor.show()
             
             # --- VISIBILITY FIXES (NUCLEAR OPTION RE-ENABLED) ---
-            # The user reported "STILL NOT RENDERING" after re-enabling shaders.
-            # So we go back to the configuration that WORKED (ShaderOff + LightOff).
+            # Keeping these enabled as per user request ("STILL NOT RENDERING")
             
             logger.info("Applying NUCLEAR visibility fixes (ShaderOff, LightOff, TwoSided, Opaque)")
             
@@ -175,16 +204,6 @@ class AnimationSystem(System):
             actor.setAlphaScale(1.0)
             actor.clearColorScale()
             actor.setColor(1, 1, 1, 1)
-            
-            # Check textures
-            tex = actor.findTexture("*")
-            if tex:
-                logger.info(f"Found texture on actor: {tex.getName()}")
-            else:
-                logger.warning("No texture found on actor. It might be white/black.")
-                # Try to load a default texture if none exists?
-                # For now, just let it be white.
-
             
             # --- CRITICAL FIX: FORCE SCALE AND POSITION ---
             min_pt, max_pt = actor.getTightBounds()

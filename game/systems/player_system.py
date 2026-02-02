@@ -175,8 +175,11 @@ class PlayerSystem(System):
             if animator:
                 if has_input:
                     if sprint:
+                        # print("DEBUG: Requesting RUN")
                         animator.play("Run", blend=0.2)
                     else:
+                        # print("DEBUG: Requesting WALK")
                         animator.play("Walk", blend=0.2)
                 else:
+                    # print("DEBUG: Requesting IDLE")
                     animator.play("Idle", blend=0.2)
