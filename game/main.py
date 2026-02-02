@@ -491,24 +491,17 @@ class AbyssalEternae(Application):
                     
                     needed_chunks.add((x, y))
         
-        # 2. Update Visibility (Don't Unload, just Hide)
-        # We iterate ALL loaded chunks.
-        # If in needed_chunks -> Ensure Visible
-        # If NOT in needed_chunks -> Ensure Hidden (but keep in memory)
+        # 2. Update Visibility AND Unload distant chunks
         
-        # Note: We still need to load new chunks if they are needed but not loaded.
+        # Identify chunks to unload (loaded but not needed)
+        # We use a buffer radius for unloading to prevent thrashing
+        # Unload if distance > radius + 2 chunks
+        unload_radius_sq = ((radius + 2) * self.chunk_size)**2
+        
+        chunks_to_unload = []
         
         for coords, entities in self.loaded_chunks.items():
-            # If debug mode is active, render ALL loaded chunks
-            # FIX: Only force visibility if debug camera is active, otherwise respect needed_chunks
-            # The previous logic was: should_be_visible = coords in needed_chunks or self.debug_camera_active
-            # This meant if debug camera was active, EVERYTHING loaded was visible.
-            # But the user said "Using f3+f4 debug makes it so that ALL chunks render. Fix that."
-            # This implies they want to see the CULLING in action from the debug view.
-            
-            # Correct Logic:
-            # We want to see exactly what the main camera sees (culled state) even in debug view.
-            # The debug camera is just an observer. It shouldn't change the game state.
+            # Visibility Check
             should_be_visible = coords in needed_chunks
             
             for entity in entities:
@@ -522,6 +515,19 @@ class AbyssalEternae(Application):
                             mesh_renderer._node_path.show()
                         else:
                             mesh_renderer._node_path.hide()
+            
+            # Unload Check
+            # Calculate distance to chunk center
+            chunk_center_x = coords[0] * self.chunk_size + self.chunk_size / 2
+            chunk_center_y = coords[1] * self.chunk_size + self.chunk_size / 2
+            dist_sq = (chunk_center_x - player_pos[0])**2 + (chunk_center_y - player_pos[1])**2
+            
+            if dist_sq > unload_radius_sq:
+                chunks_to_unload.append(coords)
+        
+        # Perform Unload
+        for coords in chunks_to_unload:
+            self._unload_chunk(coords)
                             
         # 3. Load new chunks
         # Only load if not already in loaded_chunks

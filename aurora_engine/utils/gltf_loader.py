@@ -3,10 +3,14 @@ import struct
 import os
 import uuid
 import logging
+import hashlib
 from panda3d.core import Filename, NodePath
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
+
+# Global cache for fixed file paths: original_abs_path -> fixed_temp_abs_path
+_FIXED_FILE_CACHE = {}
 
 def load_gltf_fixed(loader, file_path: str, keep_temp_file: bool = False):
     """
@@ -26,42 +30,74 @@ def load_gltf_fixed(loader, file_path: str, keep_temp_file: bool = False):
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
-        
-    # Generate a unique temp path
-    # Use a hash or uuid to avoid collisions
-    temp_filename = f"{os.path.basename(file_path)}.{uuid.uuid4().hex}.fixed"
-    temp_dir = os.path.dirname(file_path)
+
+    # Check Cache
+    global _FIXED_FILE_CACHE
+    temp_path = None
+    cached = False
     
-    # Ensure we can write to the directory, otherwise use a temp dir
-    if not os.access(temp_dir, os.W_OK):
-        import tempfile
-        temp_dir = tempfile.gettempdir()
-        
-    temp_path = os.path.join(temp_dir, temp_filename)
-    
-    # Determine extension and processing method
-    is_glb = False
-    with open(file_path, 'rb') as f:
-        header = f.read(4)
-        if header == b'glTF':
-            is_glb = True
-            temp_path += ".glb"
+    if file_path in _FIXED_FILE_CACHE:
+        temp_path = _FIXED_FILE_CACHE[file_path]
+        if os.path.exists(temp_path):
+            cached = True
+            # logger.debug(f"Using cached fixed GLTF: {temp_path}")
         else:
-            temp_path += ".gltf"
+            # Cache invalid
+            del _FIXED_FILE_CACHE[file_path]
+    
+    if not cached:
+        # Generate a deterministic temp path based on file hash or path hash
+        # Using path hash is faster but less safe if file content changes. 
+        # For dev, let's use path hash + mtime to invalidate if file changed.
+        mtime = os.path.getmtime(file_path)
+        path_hash = hashlib.md5(f"{file_path}_{mtime}".encode('utf-8')).hexdigest()
+        
+        temp_filename = f"{os.path.basename(file_path)}.{path_hash}.fixed"
+        
+        # Use a dedicated temp directory for the engine if possible, or just next to the file
+        # Next to file is better for relative textures
+        temp_dir = os.path.dirname(file_path)
+        
+        # Ensure we can write to the directory, otherwise use a temp dir
+        if not os.access(temp_dir, os.W_OK):
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            
+        temp_path = os.path.join(temp_dir, temp_filename)
+        
+        # Determine extension
+        is_glb = False
+        with open(file_path, 'rb') as f:
+            header = f.read(4)
+            if header == b'glTF':
+                is_glb = True
+                if not temp_path.endswith(".glb"): temp_path += ".glb"
+            else:
+                if not temp_path.endswith(".gltf"): temp_path += ".gltf"
+
+        try:
+            # Only process if it doesn't exist (it might exist from a previous run)
+            if not os.path.exists(temp_path):
+                logger.debug(f"Processing GLTF/GLB: {file_path} -> {temp_path}")
+                if is_glb:
+                    _process_glb(file_path, temp_path)
+                else:
+                    _process_gltf(file_path, temp_path)
+            
+            # Update cache
+            _FIXED_FILE_CACHE[file_path] = temp_path
+            
+        except Exception as e:
+            logger.error(f"Failed to fix GLTF {file_path}: {e}")
+            raise
 
     try:
-        logger.debug(f"Processing GLTF/GLB: {file_path} -> {temp_path}")
-        if is_glb:
-            _process_glb(file_path, temp_path)
-        else:
-            _process_gltf(file_path, temp_path)
-            
         # Load the fixed file
         p3d_path = Filename.fromOsSpecific(temp_path)
         
         # Load model using the provided loader
-        # Use noCache=True to ensure we load the fresh file
-        model = loader.loadModel(p3d_path, noCache=True)
+        # ENABLE CACHE: We now use a deterministic filename, so Panda3D can safely cache this!
+        model = loader.loadModel(p3d_path) 
         
         if keep_temp_file:
             return model, temp_path
@@ -70,20 +106,15 @@ def load_gltf_fixed(loader, file_path: str, keep_temp_file: bool = False):
         
     except Exception as e:
         logger.error(f"Failed to load fixed GLTF {file_path}: {e}")
-        # Try to cleanup if failed
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                pass
         raise
     finally:
-        # Cleanup temp file if not keeping
-        if not keep_temp_file and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception as e:
-                logger.warning(f"Could not remove temp file {temp_path}: {e}")
+        # Cleanup logic changed:
+        # We NEVER delete the temp file immediately if we are caching it.
+        # We rely on OS cleanup or manual cleanup.
+        # If keep_temp_file is False, we *could* delete it, but that defeats the purpose of caching for other instances.
+        # So we basically ignore keep_temp_file=False for deletion purposes, 
+        # keep_temp_file now just controls the return signature.
+        pass
 
 def _process_glb(input_path, output_path):
     with open(input_path, 'rb') as f:

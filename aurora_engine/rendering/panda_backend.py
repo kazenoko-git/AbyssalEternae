@@ -34,12 +34,38 @@ class PandaBackend:
         self._patch_gltf_loader()
 
         # Load config
+        # AGGRESSIVE MEMORY OPTIMIZATION
         load_prc_file_data("", f"""
             win-size {self.config.get('width', 1920)} {self.config.get('height', 1080)}
             window-title {self.config.get('title', 'Aurora Engine')}
             framebuffer-multisample 1
-            multisamples 4
+            multisamples 2
             gl-coordinate-system default
+            
+            # --- Memory Optimization ---
+            # Cache models to disk to avoid reprocessing
+            model-cache-dir {os.path.abspath('.panda3d_cache')}
+            model-cache-textures 1
+            
+            # Compress textures in RAM (Huge savings)
+            compressed-textures 1
+            driver-generate-mipmaps 1
+            
+            # Limit texture size (Downscale 4k/8k textures)
+            max-texture-dimension 1024
+            
+            # Don't keep a RAM copy of textures if they are on GPU
+            # (Might cause hiccups if VRAM fills up, but saves system RAM)
+            preload-textures 1
+            
+            # Aggressive Garbage Collection
+            garbage-collect-states 1
+            
+            # Reduce Geom cache
+            geom-cache-size 5000
+            
+            # Transform cache
+            transform-cache-size 5000
         """)
 
         # Create window
