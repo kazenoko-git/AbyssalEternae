@@ -91,7 +91,31 @@ class PandaBackend:
             except ImportError:
                 logger.warning("panda3d-gltf not found. GLB models will not load.")
 
+        # --- DEFAULT LIGHTING ---
+        # Ensure there is some light so models aren't black/invisible
+        self._setup_default_lighting()
+
         logger.info("Panda3D initialized")
+
+    def _setup_default_lighting(self):
+        """Setup basic lighting to ensure visibility."""
+        # Ambient Light
+        alight = AmbientLight('alight')
+        alight.setColor((0.2, 0.2, 0.2, 1))
+        alnp = self.scene_graph.attachNewNode(alight)
+        self.scene_graph.setLight(alnp)
+
+        # Directional Light (Sun)
+        dlight = DirectionalLight('dlight')
+        dlight.setColor((0.8, 0.8, 0.8, 1))
+        # Shadows
+        # dlight.setShadowCaster(True, 2048, 2048)
+        
+        dlnp = self.scene_graph.attachNewNode(dlight)
+        dlnp.setHpr(45, -60, 0)
+        self.scene_graph.setLight(dlnp)
+        
+        logger.info("Default lighting initialized")
 
     def _patch_gltf_loader(self):
         """Patch panda3d-gltf to handle missing bufferView in accessors."""

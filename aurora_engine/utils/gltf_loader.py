@@ -2,30 +2,44 @@ import json
 import struct
 import os
 import uuid
-from panda3d.core import Filename, ModelRoot, NodePath
+import logging
+from panda3d.core import Filename, NodePath
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
 
-def load_gltf_fixed(loader, file_path: str) -> NodePath:
+def load_gltf_fixed(loader, file_path: str, keep_temp_file: bool = False):
     """
-    Custom GLTF loader that fixes common issues (like missing bufferView)
-    by rewriting the file to a temporary location and loading that.
-    Returns a NodePath wrapping the loaded model.
+    Loads a GLTF/GLB file, fixing common issues like missing bufferViews.
+    Rewrites the file to a temporary location, loads it, and returns the NodePath.
+    
+    Args:
+        loader: The Panda3D loader instance.
+        file_path: Path to the GLTF/GLB file.
+        keep_temp_file: If True, the temporary fixed file is NOT deleted, and the function returns (NodePath, temp_file_path).
+                        If False (default), it returns just NodePath.
     """
     # Resolve absolute path
     if not os.path.isabs(file_path):
         file_path = os.path.abspath(file_path)
         
     if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
         
-    # Generate a unique temp path to avoid collisions
+    # Generate a unique temp path
+    # Use a hash or uuid to avoid collisions
     temp_filename = f"{os.path.basename(file_path)}.{uuid.uuid4().hex}.fixed"
-    temp_dir = os.path.dirname(file_path) # Keep in same dir to resolve relative assets if any
+    temp_dir = os.path.dirname(file_path)
+    
+    # Ensure we can write to the directory, otherwise use a temp dir
+    if not os.access(temp_dir, os.W_OK):
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        
     temp_path = os.path.join(temp_dir, temp_filename)
     
-    # Determine extension for temp file
+    # Determine extension and processing method
     is_glb = False
     with open(file_path, 'rb') as f:
         header = f.read(4)
@@ -36,6 +50,7 @@ def load_gltf_fixed(loader, file_path: str) -> NodePath:
             temp_path += ".gltf"
 
     try:
+        logger.debug(f"Processing GLTF/GLB: {file_path} -> {temp_path}")
         if is_glb:
             _process_glb(file_path, temp_path)
         else:
@@ -43,15 +58,28 @@ def load_gltf_fixed(loader, file_path: str) -> NodePath:
             
         # Load the fixed file
         p3d_path = Filename.fromOsSpecific(temp_path)
-        model = loader.loadModel(p3d_path)
-        return model
+        
+        # Load model using the provided loader
+        # Use noCache=True to ensure we load the fresh file
+        model = loader.loadModel(p3d_path, noCache=True)
+        
+        if keep_temp_file:
+            return model, temp_path
+        else:
+            return model
         
     except Exception as e:
         logger.error(f"Failed to load fixed GLTF {file_path}: {e}")
+        # Try to cleanup if failed
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
         raise
     finally:
-        # Cleanup temp file
-        if os.path.exists(temp_path):
+        # Cleanup temp file if not keeping
+        if not keep_temp_file and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception as e:
@@ -62,8 +90,14 @@ def _process_glb(input_path, output_path):
         data = f.read()
         
     # Parse GLB Header
+    if len(data) < 12:
+        raise ValueError("File too short to be GLB")
+        
     magic, version, length = struct.unpack('<III', data[:12])
     
+    if magic != 0x46546C67: # 'glTF'
+        raise ValueError("Invalid GLB magic")
+        
     chunk_pos = 12
     json_data = None
     binary_body = None
@@ -104,7 +138,7 @@ def _process_gltf(input_path, output_path):
     _apply_fixes(json_data)
     
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(json_data, f)
+        json.dump(json_data, f, indent=2)
 
 def _apply_fixes(json_data):
     """Apply known fixes to GLTF data."""
@@ -138,7 +172,6 @@ def _apply_fixes(json_data):
             "byteLength": 0,
             "byteStride": 0 
         })
-        # logger.debug(f"Created dummy bufferView at index {dummy_bv_index}")
 
     if 'accessors' in json_data:
         for acc in json_data['accessors']:
@@ -149,6 +182,7 @@ def _apply_fixes(json_data):
 
 def _write_glb(json_data, binary_body, output_path):
     """Write GLB file."""
+    # Use compact separators
     json_str = json.dumps(json_data, separators=(',', ':'))
     json_bytes = json_str.encode('utf-8')
     
@@ -168,9 +202,11 @@ def _write_glb(json_data, binary_body, output_path):
         total_length += 8 + len(binary_body)
         
     # Header: Magic (4) + Version (4) + Length (4)
+    # Magic: 0x46546C67 (glTF)
     header = struct.pack('<III', 0x46546C67, 2, total_length)
     
     # JSON Chunk Header: Len (4) + Type (4)
+    # Type: 0x4E4F534A (JSON)
     json_chunk_header = struct.pack('<II', len(json_bytes), 0x4E4F534A)
     
     with open(output_path, 'wb') as f:
@@ -180,6 +216,7 @@ def _write_glb(json_data, binary_body, output_path):
         
         if binary_body:
             # BIN Chunk Header: Len (4) + Type (4)
+            # Type: 0x004E4942 (BIN)
             bin_chunk_header = struct.pack('<II', len(binary_body), 0x004E4942)
             f.write(bin_chunk_header)
             f.write(binary_body)

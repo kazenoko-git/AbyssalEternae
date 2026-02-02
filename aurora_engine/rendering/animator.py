@@ -58,6 +58,20 @@ class Animator(Component):
             self.blend_duration = blend
             self.blend_timer = 0.0
             # Backend blending logic handled in system
+            if self._actor:
+                # Use Panda3D's built-in blending if available or just crossfade
+                # For now, we just switch, but AnimationSystem can handle smooth blending if implemented
+                # Simple crossfade implementation:
+                self._actor.enableBlend()
+                self._actor.setControlEffect(self.current_clip, 1.0)
+                self._actor.setControlEffect(self.next_clip, 0.0)
+                
+                clip = self.clips[self.next_clip]
+                self._actor.setPlayRate(clip.speed, self.next_clip)
+                if clip.loop:
+                    self._actor.loop(self.next_clip)
+                else:
+                    self._actor.play(self.next_clip)
             
         self.playing = True
 

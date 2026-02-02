@@ -110,6 +110,9 @@ class MeshRenderer(Component):
     def on_destroy(self):
         """Clean up Panda3D node when component is destroyed."""
         if self._node_path:
+            # Check if it's an Actor and call cleanup
+            if hasattr(self._node_path, 'cleanup'):
+                self._node_path.cleanup()
             self._node_path.removeNode()
             self._node_path = None
             # logger.debug("MeshRenderer node removed")

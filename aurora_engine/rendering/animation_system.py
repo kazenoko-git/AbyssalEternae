@@ -1,5 +1,6 @@
 # aurora_engine/rendering/animation_system.py
 
+import os
 from aurora_engine.ecs.system import System
 from aurora_engine.rendering.animator import Animator
 from aurora_engine.rendering.mesh import MeshRenderer
@@ -7,7 +8,7 @@ from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.resource import resolve_path
 from aurora_engine.utils.gltf_loader import load_gltf_fixed
 from direct.actor.Actor import Actor
-from panda3d.core import Point3, NodePath, ModelRoot
+from panda3d.core import Point3, NodePath, ModelRoot, BoundingBox, Filename, Character, RenderModeAttrib
 
 logger = get_logger()
 
@@ -20,9 +21,20 @@ class AnimationSystem(System):
         super().__init__()
         self.backend = backend
         self.priority = 100 # Run after logic, before rendering
+        self._temp_files = [] # Track temp files to delete later
 
     def get_required_components(self):
         return [Animator, MeshRenderer]
+        
+    def on_destroy(self):
+        """Cleanup temp files."""
+        for path in self._temp_files:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
+        self._temp_files.clear()
 
     def update(self, entities, dt):
         for entity in entities:
@@ -66,61 +78,76 @@ class AnimationSystem(System):
             logger.info(f"Initializing Actor for {model_path}")
 
             # 1. Load the main model using the fixed loader
-            # This ensures we get a valid ModelRoot with geometry
+            # We use keep_temp_file=True so we can pass the clean file path to Actor
+            panda_model_path = None
+            model_np = None
+            
             try:
-                # load_gltf_fixed returns a NodePath (wrapping ModelRoot)
-                model_node = load_gltf_fixed(self.backend.base.loader, model_path)
+                # Load the model first to verify it works and get the temp path
+                model_np, temp_model_path = load_gltf_fixed(self.backend.base.loader, model_path, keep_temp_file=True)
+                self._temp_files.append(temp_model_path)
+                
+                # Convert to Panda path (forward slashes)
+                panda_model_path = Filename.fromOsSpecific(temp_model_path).getFullpath()
+                
+                logger.info(f"Model loaded successfully. Temp path: {panda_model_path}")
+                
             except Exception as e:
                 logger.error(f"Failed to load model for Actor: {e}")
                 raise
 
-            # 2. Load animations
-            # We need to load each animation file and pass the NodePath/ModelRoot to Actor
-            anims = {}
+            # 2. Prepare animations (don't load yet)
+            anim_files = {}
             for name, clip in animator.clips.items():
                 if clip.path:
                     anim_path = resolve_path(clip.path)
-                    if anim_path != model_path:
+                    if os.path.abspath(anim_path) != os.path.abspath(model_path):
                         try:
-                            # Load animation file using fixed loader
-                            anim_node = load_gltf_fixed(self.backend.base.loader, anim_path)
-                            anims[name] = anim_node
+                            _, temp_anim_path = load_gltf_fixed(self.backend.base.loader, anim_path, keep_temp_file=True)
+                            self._temp_files.append(temp_anim_path)
+                            anim_files[name] = Filename.fromOsSpecific(temp_anim_path).getFullpath()
                         except Exception as e:
-                            logger.warning(f"Failed to load animation '{name}' from {anim_path}: {e}")
+                            logger.warning(f"Failed to fix animation file '{name}' from {anim_path}: {e}")
                     else:
-                        # Embedded animation
-                        anims[name] = model_path # Actor can handle path string for embedded if same file
+                        anim_files[name] = panda_model_path
                 else:
-                    # Implicitly embedded
-                    anims[name] = model_path
+                    anim_files[name] = panda_model_path
 
             # 3. Create Actor
-            # We pass the pre-loaded model_node as the model
-            actor = Actor(model_node, anims)
+            # Use the pre-loaded NodePath (model_np) to ensure we use the exact object we verified
+            logger.info(f"Creating Actor from NodePath: {model_np}")
             
-            # 4. Fix Hierarchy & Visibility
-            # The Actor wraps the model. We need to ensure the geometry is found.
-            # Sometimes GLTF loaders put geometry deep in the hierarchy.
+            # Note: Actor(NodePath) works, but sometimes it's better to pass the dictionary of anims immediately
+            # But we want to load anims safely.
+            actor = Actor(model_np)
             
-            # Reparent to scene graph
+            # 4. Load Animations separately
+            if anim_files:
+                logger.info(f"Loading animations: {list(anim_files.keys())}")
+                try:
+                    actor.loadAnims(anim_files)
+                except Exception as e:
+                    logger.error(f"Failed to load animations: {e}")
+            
+            # --- DEBUG: INSPECT ACTOR ---
+            logger.info(f"Actor initialized. Node: {actor.getName()}")
+            
+            # Check for geometry
+            geom_nodes = actor.findAllMatches("**/+GeomNode")
+            logger.info(f"Found {len(geom_nodes)} GeomNodes in Actor.")
+            
+            # 5. Fix Hierarchy & Visibility
             actor.reparentTo(self.backend.scene_graph)
             
-            # 5. Hide Debug Geometry (Colliders)
-            # Look for nodes with "Collider" in the name and hide them
-            colliders = actor.findAllMatches("**/+GeomNode")
-            for node in colliders:
-                if "Collider" in node.getName():
+            # 6. Hide Debug Geometry (Colliders)
+            collider_patterns = ["**/*Collider*", "**/*collider*", "**/*COLLIDER*"]
+            for pattern in collider_patterns:
+                nodes = actor.findAllMatches(pattern)
+                for node in nodes:
                     node.hide()
-                    # logger.debug(f"Hidden debug geometry: {node.getName()}")
-            
-            # Also check for nodes named "Collider" directly (even if not GeomNode)
-            colliders_nodes = actor.findAllMatches("**/*Collider*")
-            for node in colliders_nodes:
-                node.hide()
-                # logger.debug(f"Hidden debug node: {node.getName()}")
+                    # logger.info(f"Hidden debug node: {node.getName()}")
 
-            # 6. Replace static mesh node
-            # If MeshRenderer had a static node, remove it
+            # 7. Replace static mesh node
             if mesh_renderer._node_path:
                 mesh_renderer._node_path.removeNode()
             
@@ -128,28 +155,77 @@ class AnimationSystem(System):
             mesh_renderer._node_path = actor
             animator._actor = actor
             
-            # 7. Ensure Visibility
+            # 8. Ensure Visibility & Debug Attributes
             actor.show()
             
-            # 8. Start default animation
-            if animator.current_clip:
-                animator._play_backend(animator.current_clip)
+            # --- NUCLEAR DEBUG OPTION ---
+            # 1. Disable Shader (Use Fixed Function)
+            actor.setShaderOff(1)
+            # 2. Disable Lighting (Full Bright)
+            actor.setLightOff(1)
+            # 3. Force Double Sided
+            actor.setTwoSided(True)
+            # 4. Force Opaque
+            actor.setTransparency(False, 1) 
+            actor.setAlphaScale(1.0)
+            actor.clearColorScale()
+            actor.setColor(1, 1, 1, 1)
+            
+            logger.info("DEBUG: Applied 'Nuclear' visibility settings (ShaderOff, LightOff, TwoSided, Opaque)")
+            
+            # Log Render State of first GeomNode
+            if geom_nodes:
+                gn = geom_nodes[0]
+                logger.info(f"Debug: GeomNode '{gn.getName()}' State: {gn.getNetState()}")
+            
+            # --- CRITICAL FIX: FORCE SCALE AND POSITION ---
+            min_pt, max_pt = actor.getTightBounds()
+            size = max_pt - min_pt
+            max_dim = max(size.getX(), size.getY(), size.getZ())
+            
+            logger.info(f"Actor Bounds: Min={min_pt}, Max={max_pt}, Size={size}")
+            
+            if max_dim == 0:
+                logger.warning("Actor has ZERO size! It might be empty or all geometry is hidden.")
+            
+            # Scale logic
+            scale_factor = 1.0
+            if max_dim > 10.0:
+                scale_factor = 2.0 / max_dim
+                logger.info(f"Auto-scaled massive Actor by {scale_factor:.4f}")
+            elif max_dim < 0.1 and max_dim > 0:
+                scale_factor = 2.0 / max_dim
+                logger.info(f"Auto-scaled tiny Actor by {scale_factor:.4f}")
                 
-            logger.info(f"Actor initialized successfully with {len(anims)} animations.")
+            if scale_factor != 1.0:
+                actor.setScale(scale_factor)
+                
+            # 9. Start default animation
+            # DISABLED FOR DEBUGGING - CHECK BIND POSE
+            if animator.current_clip and animator.current_clip in anim_files:
+                 logger.info(f"Animation '{animator.current_clip}' loaded but NOT playing (Debug Mode).")
+                 # try:
+                 #     animator._play_backend(animator.current_clip)
+                 # except Exception as e:
+                 #     logger.error(f"Failed to play animation {animator.current_clip}: {e}")
+            else:
+                logger.info("No default animation playing (Bind Pose).")
+                
+            logger.info(f"Actor initialized successfully.")
 
         except Exception as e:
             logger.error(f"Failed to initialize Actor: {e}")
             animator._init_failed = True
             
             # Fallback: Ensure static model is visible if Actor failed
-            # We might need to reload the static model if we removed it, 
-            # but here we just assume if we failed before removing, it's fine.
-            # If we failed after removing, we should try to restore.
             if mesh_renderer._node_path and mesh_renderer._node_path.isEmpty():
-                 # Reload static
                  try:
-                     static_model = load_gltf_fixed(self.backend.base.loader, model_path)
+                     # Use the temp path we already created if possible
+                     path_to_load = panda_model_path if panda_model_path else model_path
+                     static_model = self.backend.base.loader.loadModel(path_to_load)
                      mesh_renderer._node_path = static_model
                      mesh_renderer._node_path.reparentTo(self.backend.scene_graph)
-                 except:
-                     pass
+                     mesh_renderer._node_path.show()
+                     logger.info("Reverted to static model due to animation failure.")
+                 except Exception as fallback_e:
+                     logger.error(f"Fallback failed: {fallback_e}")
