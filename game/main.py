@@ -149,7 +149,7 @@ class AbyssalEternae(Application):
 
         # Render Radius Configuration
         self.chunk_size = 100.0
-        self.render_radius_chunks = 4 # Reduced to 4 as requested
+        self.render_radius_chunks = 5 # Increased to 5 as requested
         self.render_radius_world = self.render_radius_chunks * self.chunk_size
         
         # Compatibility alias for load_radius
@@ -441,109 +441,156 @@ class AbyssalEternae(Application):
         current_chunk_x = int(player_pos[0] / self.chunk_size)
         current_chunk_y = int(player_pos[1] / self.chunk_size)
         
-        # 1. Determine needed chunks (Circular Radius + FOV Culling)
-        needed_chunks = set()
-        radius = self.render_radius_chunks
-        
         # Get Camera Forward Vector for FOV culling
         cam_transform = self.main_camera.transform
         cam_fwd = cam_transform.forward
         cam_pos = cam_transform.get_world_position()
         
-        # Iterate bounding box of circle
-        for x in range(current_chunk_x - radius, current_chunk_x + radius + 1):
-            for y in range(current_chunk_y - radius, current_chunk_y + radius + 1):
-                # Chunk center position
+        # 3D Forward Vector (Normalized)
+        # Fix: cam_fwd might be 4D (x,y,z,w) or 3D. Ensure it's 3D.
+        cam_fwd_3d = np.array([cam_fwd[0], cam_fwd[1], cam_fwd[2]], dtype=np.float32)
+        
+        if np.linalg.norm(cam_fwd_3d) > 0.01:
+            cam_fwd_3d = cam_fwd_3d / np.linalg.norm(cam_fwd_3d)
+        else:
+            cam_fwd_3d = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+            
+        # --- AGGRESSIVE CULLING & UNLOADING ---
+        
+        # Config
+        render_radius = self.render_radius_chunks # e.g. 5
+        
+        # We define two sets:
+        # 1. needed_chunks: Chunks that MUST be loaded and rendered.
+        # 2. keep_loaded_chunks: Chunks that should be kept in memory but hidden (buffer).
+        
+        needed_chunks = set()
+        keep_loaded_chunks = set()
+        
+        # Iterate a square area around the player to check candidates
+        check_radius = render_radius + 1
+        
+        # FOV Config (60 degrees half-angle = 120 FOV)
+        fov_half_rad = math.radians(60)
+        
+        # Chunk Bounding Sphere Radius (approx)
+        # 100x100 chunk + height variation. sqrt(50^2 + 50^2 + 50^2) approx 87
+        chunk_radius = 100.0
+        
+        for x in range(current_chunk_x - check_radius, current_chunk_x + check_radius + 1):
+            for y in range(current_chunk_y - check_radius, current_chunk_y + check_radius + 1):
+                
+                # Chunk center position (Assume flat plane at player height for culling)
+                # This ensures looking UP culls ground, looking DOWN culls distant ground.
                 chunk_center_x = x * self.chunk_size + self.chunk_size / 2
                 chunk_center_y = y * self.chunk_size + self.chunk_size / 2
+                chunk_center_z = player_pos[2] # Assume chunk is at player level
                 
-                # Vector to chunk
-                to_chunk = np.array([chunk_center_x - cam_pos[0], chunk_center_y - cam_pos[1], 0.0], dtype=np.float32)
-                dist_sq = to_chunk[0]**2 + to_chunk[1]**2
+                # Vector from camera to chunk center
+                to_chunk = np.array([
+                    chunk_center_x - cam_pos[0], 
+                    chunk_center_y - cam_pos[1],
+                    chunk_center_z - cam_pos[2]
+                ], dtype=np.float32)
                 
-                # Check circular distance
-                if dist_sq <= (radius * self.chunk_size)**2:
-                    # FOV Check (Dot Product)
-                    # Normalize to_chunk
-                    dist = np.sqrt(dist_sq)
-                    if dist > 0.1: # Skip current chunk (always render)
-                        to_chunk /= dist
-                        # Project cam_fwd to 2D
-                        cam_fwd_2d = np.array([cam_fwd[0], cam_fwd[1], 0.0], dtype=np.float32)
-                        if np.linalg.norm(cam_fwd_2d) > 0.01:
-                            cam_fwd_2d /= np.linalg.norm(cam_fwd_2d)
-                            
-                            dot = np.dot(to_chunk, cam_fwd_2d)
-                            
-                            # FOV Culling Logic:
-                            # dot < -0.5 means strictly behind (outside 240 degree cone)
-                            # BUT we want to keep 1-2 chunks behind the player rendered.
-                            
-                            # Calculate distance in chunks
-                            chunk_dist = dist / self.chunk_size
-                            
-                            # If chunk is very close (within 1-2 chunks), keep it regardless of FOV
-                            # This satisfies "Make one-two chunks behind the player render as well"
-                            if chunk_dist <= 1.5: # Keep immediate surroundings
-                                pass
-                            elif dot < -0.5: # Otherwise apply culling
-                                continue
-                    
+                dist = np.linalg.norm(to_chunk)
+                
+                # Distance in chunk units (2D distance for radius check)
+                dist_2d = np.sqrt(to_chunk[0]**2 + to_chunk[1]**2)
+                chunk_dist = dist_2d / self.chunk_size
+                
+                # 1. Immediate Vicinity (Always Render)
+                # Render radius of 2 around player regardless of view direction
+                if chunk_dist <= 2.0:
                     needed_chunks.add((x, y))
+                    keep_loaded_chunks.add((x, y))
+                    continue
+                    
+                # 2. 3D View Frustum Culling
+                if chunk_dist <= render_radius:
+                    if dist > 1.0:
+                        # Angle between view direction and chunk direction
+                        to_chunk_norm = to_chunk / dist
+                        dot = np.dot(to_chunk_norm, cam_fwd_3d)
+                        # Clamp dot for acos
+                        dot = max(-1.0, min(1.0, dot))
+                        angle = math.acos(dot)
+                        
+                        # Angular size of chunk
+                        # If chunk is close, it spans a large angle
+                        angular_radius = math.asin(min(1.0, chunk_radius / dist))
+                        
+                        # Check if chunk sphere intersects view cone
+                        if angle - angular_radius < fov_half_rad:
+                            needed_chunks.add((x, y))
+                            keep_loaded_chunks.add((x, y))
+                            continue
+                            
+                # 3. Unload Logic
+                # Only keep chunks within radius 2 if not visible
+                # User said: "only radius of 2 would be fully loaded if player is not looking"
+                # So we don't add anything else to keep_loaded_chunks.
+                pass
         
-        # 2. Update Visibility AND Unload distant chunks
-        
-        # Identify chunks to unload (loaded but not needed)
-        # We use a buffer radius for unloading to prevent thrashing
-        # Unload if distance > radius + 2 chunks
-        unload_radius_sq = ((radius + 2) * self.chunk_size)**2
+        # --- UPDATE VISIBILITY & UNLOAD ---
         
         chunks_to_unload = []
         
+        # Check all currently loaded chunks
         for coords, entities in self.loaded_chunks.items():
-            # Visibility Check
+            
+            # If not in keep_loaded_chunks, mark for destruction
+            if coords not in keep_loaded_chunks:
+                chunks_to_unload.append(coords)
+                continue
+                
+            # Visibility Update
             should_be_visible = coords in needed_chunks
             
             for entity in entities:
-                # Toggle MeshRenderer visibility
                 mesh_renderer = entity.get_component(MeshRenderer)
                 if mesh_renderer:
-                    mesh_renderer.visible = should_be_visible
-                    # Force update backend node immediately
-                    if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
-                        if should_be_visible:
-                            mesh_renderer._node_path.show()
-                        else:
-                            mesh_renderer._node_path.hide()
-            
-            # Unload Check
-            # Calculate distance to chunk center
-            chunk_center_x = coords[0] * self.chunk_size + self.chunk_size / 2
-            chunk_center_y = coords[1] * self.chunk_size + self.chunk_size / 2
-            dist_sq = (chunk_center_x - player_pos[0])**2 + (chunk_center_y - player_pos[1])**2
-            
-            if dist_sq > unload_radius_sq:
-                chunks_to_unload.append(coords)
-        
+                    # Only change if state differs
+                    if mesh_renderer.visible != should_be_visible:
+                        mesh_renderer.visible = should_be_visible
+                        if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
+                            if should_be_visible:
+                                mesh_renderer._node_path.show()
+                            else:
+                                mesh_renderer._node_path.hide()
+                                
         # Perform Unload
         for coords in chunks_to_unload:
             self._unload_chunk(coords)
-                            
-        # 3. Load new chunks
-        # Only load if not already in loaded_chunks
-        max_concurrent_loads = 8
+            
+        # --- LOAD NEW CHUNKS ---
+        
+        # Only load chunks that are in 'needed_chunks' (visible) OR 'keep_loaded_chunks' (buffer)
+        # Prioritize 'needed_chunks'
+        
+        max_concurrent_loads = 4 # Reduced to prevent stutter
         current_loads = len(self.pending_data) + len(self.pending_meshes)
         
-        # Sort needed chunks by distance to player so closest load first
+        # Sort needed chunks by distance
         sorted_needed = sorted(list(needed_chunks), key=lambda c: (c[0]*self.chunk_size - player_pos[0])**2 + (c[1]*self.chunk_size - player_pos[1])**2)
         
         for coords in sorted_needed:
             if current_loads >= max_concurrent_loads:
                 break
-                
+            
             if coords not in self.loaded_chunks and coords not in self.pending_data and coords not in self.pending_meshes:
                 self._request_chunk_load(coords)
                 current_loads += 1
+                
+        # If we have spare bandwidth, load buffer chunks
+        if current_loads < max_concurrent_loads:
+            sorted_buffer = sorted(list(keep_loaded_chunks), key=lambda c: (c[0]*self.chunk_size - player_pos[0])**2 + (c[1]*self.chunk_size - player_pos[1])**2)
+            for coords in sorted_buffer:
+                if current_loads >= max_concurrent_loads:
+                    break
+                if coords not in self.loaded_chunks and coords not in self.pending_data and coords not in self.pending_meshes:
+                    self._request_chunk_load(coords)
+                    current_loads += 1
         
         self._process_futures()
 
