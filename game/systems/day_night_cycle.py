@@ -20,6 +20,7 @@ class DayNightCycle(System):
         self.renderer = renderer
         self.day_duration = day_duration # Seconds for a full day
         self.time = 0.0 # 0.0 to 1.0 (0=Noon, 0.5=Midnight)
+        self.paused = False
         
         self.sun_entity = None
         self.moon_entity = None
@@ -30,17 +31,12 @@ class DayNightCycle(System):
         
         self._setup_lights()
         self._setup_color_gradient()
+        
+        # Start at evening to show transition
+        self.time = 0.3 
         # logger.debug("DayNightCycle initialized")
 
     def _setup_lights(self):
-        # We need to create entities for lights if they don't exist
-        # But we don't have access to 'world' here directly to create entities.
-        # The entities (sun/moon) are passed in or created externally usually.
-        # However, for this refactor, we'll assume the entities are assigned to us
-        # or we find them.
-        
-        # Actually, main.py creates sun/moon entities and assigns them.
-        # We just need to add Light components to them.
         pass
 
     def _setup_color_gradient(self):
@@ -49,7 +45,7 @@ class DayNightCycle(System):
             0.0: (0.53, 0.8, 0.92), # Noon
             0.20: (0.9, 0.6, 0.3),  # Sunset
             0.30: (0.1, 0.1, 0.3),  # Twilight
-            0.5: (0.05, 0.05, 0.1), # Midnight
+            0.5: (0.0, 0.0, 0.0),   # Midnight (Pitch Black for testing)
             0.70: (0.1, 0.1, 0.3),  # Twilight
             0.80: (0.9, 0.6, 0.3),  # Sunrise
             1.0: (0.53, 0.8, 0.92)  # Noon
@@ -66,19 +62,19 @@ class DayNightCycle(System):
         self.moon_colors = {
             0.0: (0.0, 0.0, 0.0),
             0.20: (0.0, 0.0, 0.0),
-            0.30: (0.1, 0.1, 0.2), # Fade in
-            0.5: (0.2, 0.2, 0.3),  # Full moon light
-            0.70: (0.1, 0.1, 0.2),
+            0.30: (0.05, 0.05, 0.1), # Fade in (Dim)
+            0.5: (0.1, 0.1, 0.15),   # Full moon light (Dim)
+            0.70: (0.05, 0.05, 0.1),
             0.80: (0.0, 0.0, 0.0),
             1.0: (0.0, 0.0, 0.0)
         }
         self.ambient_colors = {
             0.0: (0.4, 0.4, 0.4),
-            0.20: (0.4, 0.3, 0.3),
-            0.30: (0.2, 0.2, 0.3),
-            0.5: (0.1, 0.1, 0.2),
-            0.70: (0.2, 0.2, 0.3),
-            0.80: (0.4, 0.3, 0.3),
+            0.20: (0.3, 0.2, 0.2),
+            0.30: (0.1, 0.1, 0.15),
+            0.5: (0.01, 0.01, 0.02), # Almost pitch black ambient
+            0.70: (0.1, 0.1, 0.15),
+            0.80: (0.3, 0.2, 0.2),
             1.0: (0.4, 0.4, 0.4)
         }
 
@@ -86,7 +82,8 @@ class DayNightCycle(System):
         return [] # Global system
 
     def update(self, entities, dt):
-        self.time = (self.time + dt / self.day_duration) % 1.0
+        if not self.paused:
+            self.time = (self.time + dt / self.day_duration) % 1.0
         
         # Calculate Sun/Moon Position relative to Player
         center_pos = np.array([0, 0, 0], dtype=np.float32)

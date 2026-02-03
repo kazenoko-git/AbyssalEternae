@@ -52,7 +52,10 @@ class EnvironmentManager:
         sun_light = DirectionalLight(color=(1.0, 1.0, 0.8), intensity=1.0)
         sun_light.cast_shadows = True
         sun_light.shadow_map_size = 4096
-        sun_light.shadow_film_size = 400.0
+        # Increase film size to cover more area
+        sun_light.shadow_film_size = 1000.0 
+        # Adjust near/far to ensure coverage
+        sun_light.shadow_near_far = (1.0, 2000.0)
         sun.add_component(sun_light)
         
         # Moon (Sphere + Light)
@@ -69,7 +72,8 @@ class EnvironmentManager:
         moon_light = DirectionalLight(color=(0.2, 0.2, 0.3), intensity=1.0)
         moon_light.cast_shadows = True
         moon_light.shadow_map_size = 2048
-        moon_light.shadow_film_size = 400.0
+        moon_light.shadow_film_size = 1000.0
+        moon_light.shadow_near_far = (1.0, 2000.0)
         moon.add_component(moon_light)
         
         # Ambient Light Entity
@@ -86,5 +90,5 @@ class EnvironmentManager:
         day_night.sun_entity = sun
         day_night.moon_entity = moon
         day_night.ambient_entity = ambient
-        day_night.orbit_radius = self.world_manager.fog_radius - 50.0 
+        day_night.orbit_radius = 500.0
         self.world.add_system(day_night)

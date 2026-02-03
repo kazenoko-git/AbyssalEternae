@@ -33,7 +33,14 @@ class DebugManager:
         self.f3_pressed = False
         self.f4_pressed = False
         self.f5_pressed = False
+        self.f6_pressed = False
         self.show_lighting_debug = False
+        self.show_shadow_buffer = False
+        
+        # Time Control State
+        self.bracket_left_pressed = False
+        self.bracket_right_pressed = False
+        self.p_pressed = False
         
         # Secondary Camera
         self.secondary_window = None
@@ -92,6 +99,44 @@ class DebugManager:
                 logger.info(f"Toggled Lighting Debug: {self.show_lighting_debug}")
         else:
             self.f5_pressed = False
+            
+        # F6: Toggle Shadow Buffer View
+        if self.input.is_key_down('f6'):
+            if not self.f6_pressed:
+                self.f6_pressed = True
+                self._toggle_shadow_buffer()
+        else:
+            self.f6_pressed = False
+            
+        # Time Controls
+        day_night = self._get_day_night_system()
+        if day_night:
+            # [: Time - 0.1
+            if self.input.is_key_down('['):
+                if not self.bracket_left_pressed:
+                    self.bracket_left_pressed = True
+                    day_night.time = (day_night.time - 0.1) % 1.0
+                    logger.info(f"Time set to: {day_night.time:.2f}")
+            else:
+                self.bracket_left_pressed = False
+                
+            # ]: Time + 0.1
+            if self.input.is_key_down(']'):
+                if not self.bracket_right_pressed:
+                    self.bracket_right_pressed = True
+                    day_night.time = (day_night.time + 0.1) % 1.0
+                    logger.info(f"Time set to: {day_night.time:.2f}")
+            else:
+                self.bracket_right_pressed = False
+                
+            # P: Pause/Resume
+            if self.input.is_key_down('p'):
+                if not self.p_pressed:
+                    self.p_pressed = True
+                    day_night.paused = not day_night.paused
+                    logger.info(f"Time Paused: {day_night.paused}")
+            else:
+                self.p_pressed = False
 
     def _toggle_debug_view(self):
         """Toggle visual debug modes."""
@@ -112,6 +157,16 @@ class DebugManager:
                 if self.debug_node_path:
                     self.debug_node_path.hide()
 
+    def _toggle_shadow_buffer(self):
+        """Toggle shadow buffer visualization."""
+        self.show_shadow_buffer = not self.show_shadow_buffer
+        if hasattr(self.renderer.backend, 'base'):
+            if self.show_shadow_buffer:
+                self.renderer.backend.base.bufferViewer.toggleEnable()
+            else:
+                self.renderer.backend.base.bufferViewer.toggleEnable()
+        logger.info(f"Shadow Buffer View: {self.show_shadow_buffer}")
+
     def _update_ui(self, dt: float, player_pos: np.ndarray):
         """Update debug overlay text."""
         if self.debug_label.visible:
@@ -121,19 +176,21 @@ class DebugManager:
         if self.show_lighting_debug:
             self.lighting_label.text = self._get_lighting_info()
 
+    def _get_day_night_system(self) -> Optional[DayNightCycle]:
+        for sys in self.world.systems:
+            if isinstance(sys, DayNightCycle):
+                return sys
+        return None
+
     def _get_lighting_info(self) -> str:
         """Retrieve current lighting stats."""
         info = "Lighting Info:\n"
         
-        # Find DayNightCycle
-        day_night = None
-        for sys in self.world.systems:
-            if isinstance(sys, DayNightCycle):
-                day_night = sys
-                break
+        day_night = self._get_day_night_system()
         
         if day_night:
-            info += f"Time: {day_night.time:.2f}\n"
+            status = "PAUSED" if day_night.paused else "RUNNING"
+            info += f"Time: {day_night.time:.2f} ({status})\n"
             
             if day_night.sun_entity:
                 light = day_night.sun_entity.get_component(DirectionalLight)

@@ -1,6 +1,8 @@
 # aurora_engine/rendering/light_system.py
 
+from typing import List, Type
 from aurora_engine.ecs.system import System
+from aurora_engine.ecs.component import Component
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.light import Light, AmbientLight, DirectionalLight, PointLight
 from aurora_engine.core.logging import get_logger
@@ -20,28 +22,44 @@ class LightSystem(System):
         super().__init__()
         self.renderer = renderer
         self.priority = 90 # Run before rendering
+        self._debug_log_timer = 0.0
+        self._initialized_lights = set()
 
-    def get_required_components(self):
+    def get_required_components(self) -> List[Type[Component]]:
         return [Light]
 
-    def update(self, entities, dt):
+    def update(self, entities: List, dt: float):
+        self._debug_log_timer += dt
+        should_log = self._debug_log_timer > 5.0 # Log every 5 seconds
+        if should_log:
+            self._debug_log_timer = 0.0
+        
+        # Clear all lights from the scene graph to ensure only our lights are active
+        if hasattr(self.renderer.backend, 'scene_graph'):
+            self.renderer.backend.scene_graph.clearLight()
+            
         for entity in entities:
             light = entity.get_component(Light)
             
             # Initialize backend light if needed
-            if not light._backend_handle:
+            if entity.id not in self._initialized_lights:
                 self._initialize_light(entity, light)
+                self._initialized_lights.add(entity.id)
                 
             if light._backend_handle:
-                self._update_light(entity, light)
+                # Re-apply light to scene graph since we cleared it
+                self.renderer.backend.scene_graph.setLight(light._backend_handle)
+                self._update_light(entity, light, should_log)
 
     def on_entity_removed(self, entity):
         """Clean up light when entity is removed."""
         light = entity.get_component(Light)
         if light and light._backend_handle:
-            # Remove from scene graph
+            # The light is already cleared from scene graph, just remove the node
             light._backend_handle.removeNode()
             light._backend_handle = None
+        if entity.id in self._initialized_lights:
+            self._initialized_lights.remove(entity.id)
 
     def _initialize_light(self, entity, light: Light):
         """Create the Panda3D light object."""
@@ -68,12 +86,9 @@ class LightSystem(System):
             light_np = self.renderer.backend.scene_graph.attachNewNode(panda_light)
             light._backend_handle = light_np
             
-            # Enable light on the scene graph
-            self.renderer.backend.scene_graph.setLight(light_np)
-            
-            # logger.debug(f"Initialized light: {name}")
+            logger.info(f"Initialized light: {name} ({type(light).__name__})")
 
-    def _update_light(self, entity, light: Light):
+    def _update_light(self, entity, light: Light, log_debug: bool = False):
         """Update light properties."""
         light_np = light._backend_handle
         panda_light = light_np.node()
@@ -81,6 +96,9 @@ class LightSystem(System):
         # Update Color
         color = Vec4(light.color[0], light.color[1], light.color[2], 1.0) * light.intensity
         panda_light.setColor(color)
+        
+        if log_debug:
+            logger.info(f"Light {entity.id} Color: {color}")
         
         # Update Transform (if not Ambient)
         if not isinstance(light, AmbientLight):
@@ -93,14 +111,17 @@ class LightSystem(System):
                 light_np.setPos(pos[0], pos[1], pos[2])
                 
                 # Update rotation (Panda uses HPR or Quat)
-                # Assuming transform rotation is quaternion [x, y, z, w]
-                # Panda Quat is (w, x, y, z)
                 from panda3d.core import Quat
                 light_np.setQuat(Quat(rot[3], rot[0], rot[1], rot[2]))
                 
         # Update specific properties
         if isinstance(light, PointLight):
             panda_light.setAttenuation(light.attenuation)
-            # PointLight radius is handled via attenuation in Panda3D usually, 
-            # but simplepbr might use a radius property if exposed.
-            # For now, attenuation is the main control.
+            
+        # Update shadow properties dynamically if needed
+        if isinstance(light, DirectionalLight) and light.cast_shadows:
+             lens = panda_light.getLens()
+             if lens.getFilmSize().getX() != light.shadow_film_size:
+                 lens.setFilmSize(light.shadow_film_size, light.shadow_film_size)
+             if lens.getNear() != light.shadow_near_far[0] or lens.getFar() != light.shadow_near_far[1]:
+                 lens.setNearFar(*light.shadow_near_far)

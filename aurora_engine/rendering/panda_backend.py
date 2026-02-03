@@ -52,7 +52,8 @@ class PandaBackend:
             driver-generate-mipmaps 1
             
             # Limit texture size (Downscale 4k/8k textures)
-            max-texture-dimension 1024
+            # Increased to 4096 to support high-res shadow maps
+            max-texture-dimension 4096
             
             # Don't keep a RAM copy of textures if they are on GPU
             # (Might cause hiccups if VRAM fills up, but saves system RAM)
