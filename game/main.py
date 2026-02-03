@@ -3,7 +3,7 @@
 from aurora_engine.core.application import Application
 from aurora_engine.ecs.entity import Entity
 from aurora_engine.scene.transform import Transform
-from aurora_engine.rendering.mesh import MeshRenderer, create_cube_mesh, create_plane_mesh, create_capsule_mesh
+from aurora_engine.rendering.mesh import MeshRenderer, create_cube_mesh, create_plane_mesh, create_capsule_mesh, create_sphere_mesh
 from game.systems.player_system import PlayerSystem
 from game.systems.player_action_system import PlayerActionSystem
 from game.systems.dialogue_system import DialogueSystem
@@ -94,10 +94,11 @@ class AbyssalEternae(Application):
         
         # Add player physics
         # Switching to CapsuleCollider for better character physics
-        # User manually updated: Radius 0.2, Height 1.9
-        collider = Collider(CapsuleCollider(radius=0.2, height=1.9))
+        # Adjusted dimensions based on feedback:
+        # Radius 0.25 (Slimmer), Cylinder Height 1.5 (Taller) -> Total Height 2.0
+        collider = Collider(CapsuleCollider(radius=0.25, height=1.9))
         
-        # User manually updated: Offset 0.9
+        # Offset center up by half total height (2.0 / 2 = 1.0) so bottom is at 0
         collider.offset = np.array([0.0, 0.0, 0.9], dtype=np.float32)
         
         self.player.add_component(collider)
@@ -254,29 +255,29 @@ class AbyssalEternae(Application):
 
     def _setup_celestial_bodies(self):
         """Create visual entities for Sun and Moon."""
-        # Sun (Billboard Plane)
+        # Sun (Sphere)
         sun = self.world.create_entity()
         sun.add_component(Transform())
         
         # Use texture path for image
         sun_renderer = MeshRenderer(
-            mesh=create_plane_mesh(100.0, 100.0), 
+            mesh=create_sphere_mesh(radius=10.0, segments=32, rings=16), 
             color=(1.0, 1.0, 0.8, 1.0),
             texture_path="assets/textures/sun.png" # Placeholder path
         )
-        sun_renderer.billboard = True # Always face camera
+        # sun_renderer.billboard = True # Spheres don't need billboarding usually, unless texture is directional
         sun.add_component(sun_renderer)
         
-        # Moon (Billboard Plane)
+        # Moon (Sphere)
         moon = self.world.create_entity()
         moon.add_component(Transform())
         
         moon_renderer = MeshRenderer(
-            mesh=create_plane_mesh(80.0, 80.0), 
+            mesh=create_sphere_mesh(radius=8.0, segments=32, rings=16), 
             color=(0.8, 0.8, 1.0, 1.0),
             texture_path="assets/textures/moon.png" # Placeholder path
         )
-        moon_renderer.billboard = True # Always face camera
+        # moon_renderer.billboard = True
         moon.add_component(moon_renderer)
         
         # Pass entities to DayNightCycle system
