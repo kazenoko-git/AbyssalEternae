@@ -3,7 +3,7 @@
 from aurora_engine.ecs.system import System
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, create_sphere_mesh
-from panda3d.core import Vec4, DirectionalLight, AmbientLight, Fog
+from aurora_engine.rendering.light import DirectionalLight, AmbientLight
 import numpy as np
 import math
 from aurora_engine.core.logging import get_logger
@@ -23,10 +23,7 @@ class DayNightCycle(System):
         
         self.sun_entity = None
         self.moon_entity = None
-        self.sun_light_node = None
-        self.moon_light_node = None
-        self.ambient_light_node = None
-        self.fog = None
+        self.ambient_entity = None
         
         self.target = None # Player transform to follow
         self.orbit_radius = 500.0 # Distance from player
@@ -36,75 +33,53 @@ class DayNightCycle(System):
         # logger.debug("DayNightCycle initialized")
 
     def _setup_lights(self):
-        # Sun Light
-        dlight = DirectionalLight('sun_light')
-        dlight.setShadowCaster(True, 2048, 2048) # Enable Shadows
-        # Adjust shadow lens to cover visible area
-        lens = dlight.getLens()
-        lens.setFilmSize(200, 200) # Cover 200x200 area around camera
-        lens.setNearFar(10, 1000)
+        # We need to create entities for lights if they don't exist
+        # But we don't have access to 'world' here directly to create entities.
+        # The entities (sun/moon) are passed in or created externally usually.
+        # However, for this refactor, we'll assume the entities are assigned to us
+        # or we find them.
         
-        self.sun_light_node = self.renderer.backend.scene_graph.attachNewNode(dlight)
-        self.renderer.backend.scene_graph.setLight(self.sun_light_node)
-        
-        # Moon Light
-        mlight = DirectionalLight('moon_light')
-        mlight.setColor(Vec4(0.2, 0.2, 0.3, 1))
-        mlight.setShadowCaster(True, 1024, 1024) # Enable Shadows (lower res for night)
-        lens = mlight.getLens()
-        lens.setFilmSize(200, 200)
-        lens.setNearFar(10, 1000)
-
-        self.moon_light_node = self.renderer.backend.scene_graph.attachNewNode(mlight)
-        self.renderer.backend.scene_graph.setLight(self.moon_light_node)
-        
-        # Ambient Light
-        alight = AmbientLight('ambient_light')
-        self.ambient_light_node = self.renderer.backend.scene_graph.attachNewNode(alight)
-        self.renderer.backend.scene_graph.setLight(self.ambient_light_node)
-        
-        # Fog
-        self.fog = Fog("DayNightFog")
-        self.fog.setExpDensity(0.002)
-        self.renderer.backend.scene_graph.setFog(self.fog)
+        # Actually, main.py creates sun/moon entities and assigns them.
+        # We just need to add Light components to them.
+        pass
 
     def _setup_color_gradient(self):
         # Time -> Color mapping
         self.sky_colors = {
-            0.0: Vec4(0.53, 0.8, 0.92, 1), # Noon
-            0.20: Vec4(0.9, 0.6, 0.3, 1),  # Sunset
-            0.30: Vec4(0.1, 0.1, 0.3, 1),  # Twilight
-            0.5: Vec4(0.05, 0.05, 0.1, 1), # Midnight
-            0.70: Vec4(0.1, 0.1, 0.3, 1),  # Twilight
-            0.80: Vec4(0.9, 0.6, 0.3, 1),  # Sunrise
-            1.0: Vec4(0.53, 0.8, 0.92, 1)  # Noon
+            0.0: (0.53, 0.8, 0.92), # Noon
+            0.20: (0.9, 0.6, 0.3),  # Sunset
+            0.30: (0.1, 0.1, 0.3),  # Twilight
+            0.5: (0.05, 0.05, 0.1), # Midnight
+            0.70: (0.1, 0.1, 0.3),  # Twilight
+            0.80: (0.9, 0.6, 0.3),  # Sunrise
+            1.0: (0.53, 0.8, 0.92)  # Noon
         }
         self.sun_colors = {
-            0.0: Vec4(1.0, 1.0, 0.9, 1),
-            0.20: Vec4(1.0, 0.8, 0.6, 1),
-            0.30: Vec4(0,0,0,1), # Fade to black
-            0.5: Vec4(0,0,0,1),
-            0.70: Vec4(0,0,0,1),
-            0.80: Vec4(1.0, 0.8, 0.6, 1),
-            1.0: Vec4(1.0, 1.0, 0.9, 1)
+            0.0: (1.0, 1.0, 0.9),
+            0.20: (1.0, 0.8, 0.6),
+            0.30: (0.0, 0.0, 0.0), # Fade to black
+            0.5: (0.0, 0.0, 0.0),
+            0.70: (0.0, 0.0, 0.0),
+            0.80: (1.0, 0.8, 0.6),
+            1.0: (1.0, 1.0, 0.9)
         }
         self.moon_colors = {
-            0.0: Vec4(0,0,0,1),
-            0.20: Vec4(0,0,0,1),
-            0.30: Vec4(0.1, 0.1, 0.2, 1), # Fade in
-            0.5: Vec4(0.2, 0.2, 0.3, 1),  # Full moon light
-            0.70: Vec4(0.1, 0.1, 0.2, 1),
-            0.80: Vec4(0,0,0,1),
-            1.0: Vec4(0,0,0,1)
+            0.0: (0.0, 0.0, 0.0),
+            0.20: (0.0, 0.0, 0.0),
+            0.30: (0.1, 0.1, 0.2), # Fade in
+            0.5: (0.2, 0.2, 0.3),  # Full moon light
+            0.70: (0.1, 0.1, 0.2),
+            0.80: (0.0, 0.0, 0.0),
+            1.0: (0.0, 0.0, 0.0)
         }
         self.ambient_colors = {
-            0.0: Vec4(0.4, 0.4, 0.4, 1),
-            0.20: Vec4(0.4, 0.3, 0.3, 1),
-            0.30: Vec4(0.2, 0.2, 0.3, 1),
-            0.5: Vec4(0.1, 0.1, 0.2, 1),
-            0.70: Vec4(0.2, 0.2, 0.3, 1),
-            0.80: Vec4(0.4, 0.3, 0.3, 1),
-            1.0: Vec4(0.4, 0.4, 0.4, 1)
+            0.0: (0.4, 0.4, 0.4),
+            0.20: (0.4, 0.3, 0.3),
+            0.30: (0.2, 0.2, 0.3),
+            0.5: (0.1, 0.1, 0.2),
+            0.70: (0.2, 0.2, 0.3),
+            0.80: (0.4, 0.3, 0.3),
+            1.0: (0.4, 0.4, 0.4)
         }
 
     def get_required_components(self):
@@ -114,53 +89,18 @@ class DayNightCycle(System):
         self.time = (self.time + dt / self.day_duration) % 1.0
         
         # Calculate Sun/Moon Position relative to Player
-        # They should orbit around the player to simulate being "infinitely far away" but visible
         center_pos = np.array([0, 0, 0], dtype=np.float32)
         if self.target:
             center_pos = self.target.get_world_position()
             
         angle = self.time * 2 * math.pi
-        
-        # Orbit in YZ plane (East-West)
-        # Noon (0.0) -> Sun High (+Z)
-        # Sunset (0.25) -> Sun West (-X)
-        # Midnight (0.5) -> Sun Low (-Z)
-        
-        # We want Sun to rise in East (+X) and set in West (-X)
-        # Angle 0 = Noon (Top)
-        # Angle PI/2 = Sunset (West, -X)
-        # Angle PI = Midnight (Bottom)
-        # Angle 3PI/2 = Sunrise (East, +X)
-        
-        # Correct math for East-West orbit:
-        # X = sin(angle) * radius (0 at noon, 1 at sunset, 0 at midnight, -1 at sunrise) -> Wait, sunrise is East (+X)
-        # Let's align:
-        # Time 0.0 (Noon): Sun at (0, 0, +R)
-        # Time 0.25 (Sunset): Sun at (-R, 0, 0) (West)
-        # Time 0.75 (Sunrise): Sun at (+R, 0, 0) (East)
-        
-        sun_x = math.sin(angle) * self.orbit_radius # 0 -> 1 -> 0 -> -1
-        # We want +1 at 0.75 (Sunrise) and -1 at 0.25 (Sunset)
-        # sin(0.75 * 2pi) = sin(1.5pi) = -1. Wrong direction.
-        # Let's use cos/sin standard circle and rotate.
-        
-        # Standard:
-        # 0.0 -> Top (+Z)
-        # 0.25 -> Right (+X)
-        # 0.5 -> Bottom (-Z)
-        # 0.75 -> Left (-X)
-        
-        # We want 0.25 to be West (-X). So invert X.
-        
+
         sun_h = math.cos(angle) * self.orbit_radius # Height (+Z)
         sun_w = -math.sin(angle) * self.orbit_radius # East/West (-X)
-        
-        # Position relative to player
-        # We keep Y constant relative to player so it follows them
-        
+
         sun_pos = np.array([
             center_pos[0] + sun_w,
-            center_pos[1], # Keep same Y depth
+            center_pos[1],
             center_pos[2] + sun_h
         ], dtype=np.float32)
         
@@ -174,7 +114,6 @@ class DayNightCycle(System):
         if self.sun_entity:
             t = self.sun_entity.get_component(Transform)
             t.set_world_position(sun_pos)
-            # Look at player
             self._look_at(t, center_pos)
             
         if self.moon_entity:
@@ -182,41 +121,23 @@ class DayNightCycle(System):
             t.set_world_position(moon_pos)
             self._look_at(t, center_pos)
             
-        # Update Lights
-        # Directional light position doesn't matter for lighting, only rotation
-        # But we set position for shadow mapping frustum center
-        self.sun_light_node.setPos(sun_pos[0], sun_pos[1], sun_pos[2])
-        self.sun_light_node.lookAt(center_pos[0], center_pos[1], center_pos[2])
-        
-        self.moon_light_node.setPos(moon_pos[0], moon_pos[1], moon_pos[2])
-        self.moon_light_node.lookAt(center_pos[0], center_pos[1], center_pos[2])
-        
         self._update_colors(sun_h)
 
     def _look_at(self, transform, target_pos):
-        # Simple look at for entities
-        # We need to set rotation quaternion
-        # Vector from transform to target
         origin = transform.get_world_position()
         direction = target_pos - origin
         if np.linalg.norm(direction) < 0.001: return
         direction /= np.linalg.norm(direction)
         
-        # Up vector (Global Z)
         up = np.array([0, 0, 1], dtype=np.float32)
-        
-        # Calculate Right
         right = np.cross(direction, up)
         if np.linalg.norm(right) < 0.001:
             right = np.array([1, 0, 0], dtype=np.float32)
         else:
             right /= np.linalg.norm(right)
-            
-        # Recalculate Up
         up = np.cross(right, direction)
         up /= np.linalg.norm(up)
         
-        # Matrix
         rot_mat = np.eye(3, dtype=np.float32)
         rot_mat[:, 0] = right
         rot_mat[:, 1] = direction # Forward
@@ -227,8 +148,6 @@ class DayNightCycle(System):
 
     def _interpolate_color(self, gradient, time):
         keys = sorted(gradient.keys())
-        
-        # Find surrounding keys
         key1 = keys[0]
         key2 = keys[-1]
         for k in keys:
@@ -237,32 +156,42 @@ class DayNightCycle(System):
             if k >= time:
                 key2 = k
                 break
-                
         if key1 == key2:
-            return gradient[key1]
+            return np.array(gradient[key1], dtype=np.float32)
             
-        # Interpolate
         t = (time - key1) / (key2 - key1)
-        return gradient[key1] * (1 - t) + gradient[key2] * t
+        c1 = np.array(gradient[key1], dtype=np.float32)
+        c2 = np.array(gradient[key2], dtype=np.float32)
+        return c1 * (1 - t) + c2 * t
 
     def _update_colors(self, sun_height):
         sky_color = self._interpolate_color(self.sky_colors, self.time)
         sun_color = self._interpolate_color(self.sun_colors, self.time)
         moon_color = self._interpolate_color(self.moon_colors, self.time)
-        ambient = self._interpolate_color(self.ambient_colors, self.time)
+        ambient_color = self._interpolate_color(self.ambient_colors, self.time)
         
-        # Apply colors (no more switching lights on/off)
+        # Apply colors
         if hasattr(self.renderer.backend, 'base'):
-            self.renderer.backend.base.setBackgroundColor(sky_color)
+            self.renderer.backend.base.setBackgroundColor(sky_color[0], sky_color[1], sky_color[2], 1)
         
-        if self.fog:
-            self.fog.setColor(sky_color)
+        # Update Fog
+        if hasattr(self.renderer.backend.scene_graph, 'getFog'):
+            fog = self.renderer.backend.scene_graph.getFog()
+            if fog:
+                fog.setColor(sky_color[0], sky_color[1], sky_color[2])
             
-        if self.sun_light_node:
-            self.sun_light_node.node().setColor(sun_color)
-            
-        if self.moon_light_node:
-            self.moon_light_node.node().setColor(moon_color)
-            
-        if self.ambient_light_node:
-            self.ambient_light_node.node().setColor(ambient)
+        # Update Light Components
+        if self.sun_entity:
+            light = self.sun_entity.get_component(DirectionalLight)
+            if light:
+                light.color = sun_color
+
+        if self.moon_entity:
+            light = self.moon_entity.get_component(DirectionalLight)
+            if light:
+                light.color = moon_color
+
+        if self.ambient_entity:
+            light = self.ambient_entity.get_component(AmbientLight)
+            if light:
+                light.color = ambient_color

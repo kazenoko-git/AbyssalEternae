@@ -9,7 +9,7 @@ from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
-from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3, NodePath
+from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3, NodePath, Material
 import os
 
 class Renderer:
@@ -39,8 +39,8 @@ class Renderer:
         self.logger.debug("Initializing PandaBackend")
         self.backend.initialize()
         
-        # Enable Auto Shader for shadows and normal mapping
-        self.backend.scene_graph.setShaderAuto()
+        # Note: We do NOT call setShaderAuto() here because simplepbr handles shaders.
+        # Calling it would conflict with simplepbr's PBR shader.
 
         self._setup_cel_shading_pipeline()
 
@@ -198,6 +198,17 @@ class Renderer:
                 # Apply billboard effect if requested
                 if hasattr(mesh_renderer, 'billboard') and mesh_renderer.billboard:
                     mesh_renderer._node_path.setEffect(BillboardEffect.makePointEye())
+                    
+                # --- PBR MATERIAL FIX ---
+                # Ensure a Panda Material is attached for lighting if none exists
+                if not mesh_renderer._node_path.hasMaterial():
+                    m = Material()
+                    m.setBaseColor((1, 1, 1, 1))
+                    m.setAmbient((0.2, 0.2, 0.2, 1))
+                    m.setDiffuse((0.8, 0.8, 0.8, 1))
+                    m.setSpecular((0.0, 0.0, 0.0, 1)) # No specular for default
+                    m.setRoughness(0.9)
+                    mesh_renderer._node_path.setMaterial(m)
         
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
             # Update transform

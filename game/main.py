@@ -43,7 +43,7 @@ class Eternae(Application):
         self.world_manager = WorldManager(self.world, self.db_manager, self.world_generator)
         self.player_manager = PlayerManager(self.world, self.input, self.physics, self.renderer)
         self.ai_manager = AIManager(self.db_manager, self.ai_generator)
-        self.debug_manager = DebugManager(self.renderer, self.input, self.physics, self.ui)
+        self.debug_manager = DebugManager(self.world, self.renderer, self.input, self.physics, self.ui)
         self.game_ui_manager = GameUIManager(self.ui, self.config)
         self.environment_manager = EnvironmentManager(self.world, self.renderer, self.world_manager)
         

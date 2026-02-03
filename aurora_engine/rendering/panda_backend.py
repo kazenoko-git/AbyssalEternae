@@ -97,9 +97,10 @@ class PandaBackend:
         try:
             import simplepbr
             # simplepbr.init() automatically patches the loader
-            simplepbr.init()
+            # Enable shadows explicitly
+            simplepbr.init(enable_shadows=True, use_normal_maps=True)
             has_simplepbr = True
-            logger.info("Initialized simplepbr")
+            logger.info("Initialized simplepbr with shadows enabled")
         except ImportError:
             logger.warning("simplepbr not found. PBR materials might not look correct.")
 
@@ -117,9 +118,9 @@ class PandaBackend:
             except ImportError:
                 logger.warning("panda3d-gltf not found. GLB models will not load.")
 
-        # --- DEFAULT LIGHTING ---
-        # Ensure there is some light so models aren't black/invisible
-        self._setup_default_lighting()
+        # --- DEFAULT LIGHTING REMOVED ---
+        # We rely on game systems (DayNightCycle) to provide lighting.
+        # self._setup_default_lighting()
 
         logger.info("Panda3D initialized")
 
@@ -134,7 +135,7 @@ class PandaBackend:
         # Directional Light (Sun)
         dlight = DirectionalLight('dlight')
         dlight.setColor((0.8, 0.8, 0.8, 1))
-        # Shadows
+        # Shadows are handled by DayNightCycle system, but we can enable them here for default scene
         # dlight.setShadowCaster(True, 2048, 2048)
         
         dlnp = self.scene_graph.attachNewNode(dlight)
@@ -353,8 +354,19 @@ class PandaBackend:
     def _upload_mesh(self, mesh: Mesh):
         """Convert Mesh to Panda3D GeomNode."""
         with profile_section("UploadMesh"):
-            # Use V3n3c4t2 format to support vertex colors
-            format = GeomVertexFormat.getV3n3c4t2()
+            # Use custom format with Tangent and Binormal for PBR
+            array_format = GeomVertexArrayFormat()
+            array_format.addColumn(InternalName.getVertex(), 3, Geom.NTFloat32, Geom.CPoint)
+            array_format.addColumn(InternalName.getNormal(), 3, Geom.NTFloat32, Geom.CVector)
+            array_format.addColumn(InternalName.getColor(), 4, Geom.NTFloat32, Geom.CColor)
+            array_format.addColumn(InternalName.getTexcoord(), 2, Geom.NTFloat32, Geom.CTexcoord)
+            array_format.addColumn(InternalName.getTangent(), 3, Geom.NTFloat32, Geom.CVector)
+            array_format.addColumn(InternalName.getBinormal(), 3, Geom.NTFloat32, Geom.CVector)
+            
+            format = GeomVertexFormat()
+            format.addArray(array_format)
+            format = GeomVertexFormat.registerFormat(format)
+            
             vdata = GeomVertexData(mesh.name, format, Geom.UHStatic)
             
             # Vertices
@@ -362,6 +374,12 @@ class PandaBackend:
             normal = GeomVertexWriter(vdata, 'normal')
             color = GeomVertexWriter(vdata, 'color')
             texcoord = GeomVertexWriter(vdata, 'texcoord')
+            tangent = GeomVertexWriter(vdata, 'tangent')
+            binormal = GeomVertexWriter(vdata, 'binormal')
+            
+            # Ensure tangents are calculated
+            if len(mesh.tangents) == 0 and len(mesh.uvs) > 0:
+                mesh.calculate_tangents()
             
             for i in range(len(mesh.vertices)):
                 v = mesh.vertices[i]
@@ -381,6 +399,18 @@ class PandaBackend:
                 if len(mesh.uvs) > i:
                     uv = mesh.uvs[i]
                     texcoord.addData2(uv[0], uv[1])
+                    
+                if len(mesh.tangents) > i:
+                    t = mesh.tangents[i]
+                    tangent.addData3(t[0], t[1], t[2])
+                else:
+                    tangent.addData3(1, 0, 0)
+                    
+                if len(mesh.binormals) > i:
+                    b = mesh.binormals[i]
+                    binormal.addData3(b[0], b[1], b[2])
+                else:
+                    binormal.addData3(0, 1, 0)
                     
             # Primitives
             geom = Geom(vdata)

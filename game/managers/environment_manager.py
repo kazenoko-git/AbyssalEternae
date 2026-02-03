@@ -2,6 +2,7 @@ from aurora_engine.rendering.mesh import MeshRenderer, create_sphere_mesh
 from aurora_engine.scene.transform import Transform
 from aurora_engine.ecs.world import World
 from aurora_engine.rendering.renderer import Renderer
+from aurora_engine.rendering.light import DirectionalLight, AmbientLight
 from game.systems.day_night_cycle import DayNightCycle
 from game.systems.fade_in_system import FadeInSystem
 from game.managers.world_manager import WorldManager
@@ -20,8 +21,8 @@ class EnvironmentManager:
     def setup(self, player_transform: Transform):
         """Initialize environment systems and entities."""
         self._setup_fog()
-        sun, moon = self._create_celestial_bodies()
-        self._setup_systems(sun, moon, player_transform)
+        sun, moon, ambient = self._create_celestial_bodies()
+        self._setup_systems(sun, moon, ambient, player_transform)
 
     def _setup_fog(self):
         """Setup distance fog for performance and atmosphere."""
@@ -37,7 +38,7 @@ class EnvironmentManager:
 
     def _create_celestial_bodies(self):
         """Create visual entities for Sun and Moon."""
-        # Sun (Sphere)
+        # Sun (Sphere + Light)
         sun = self.world.create_entity()
         sun.add_component(Transform())
         
@@ -48,7 +49,13 @@ class EnvironmentManager:
         )
         sun.add_component(sun_renderer)
         
-        # Moon (Sphere)
+        sun_light = DirectionalLight(color=(1.0, 1.0, 0.8), intensity=1.0)
+        sun_light.cast_shadows = True
+        sun_light.shadow_map_size = 4096
+        sun_light.shadow_film_size = 400.0
+        sun.add_component(sun_light)
+        
+        # Moon (Sphere + Light)
         moon = self.world.create_entity()
         moon.add_component(Transform())
         
@@ -59,14 +66,25 @@ class EnvironmentManager:
         )
         moon.add_component(moon_renderer)
         
-        return sun, moon
+        moon_light = DirectionalLight(color=(0.2, 0.2, 0.3), intensity=1.0)
+        moon_light.cast_shadows = True
+        moon_light.shadow_map_size = 2048
+        moon_light.shadow_film_size = 400.0
+        moon.add_component(moon_light)
+        
+        # Ambient Light Entity
+        ambient = self.world.create_entity()
+        ambient.add_component(AmbientLight(color=(0.2, 0.2, 0.2), intensity=1.0))
+        
+        return sun, moon, ambient
 
-    def _setup_systems(self, sun, moon, player_transform):
+    def _setup_systems(self, sun, moon, ambient, player_transform):
         self.world.add_system(FadeInSystem())
         
         day_night = DayNightCycle(self.renderer)
         day_night.target = player_transform
         day_night.sun_entity = sun
         day_night.moon_entity = moon
+        day_night.ambient_entity = ambient
         day_night.orbit_radius = self.world_manager.fog_radius - 50.0 
         self.world.add_system(day_night)

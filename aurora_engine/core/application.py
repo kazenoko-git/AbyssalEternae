@@ -13,6 +13,7 @@ from aurora_engine.physics.physics_world import PhysicsWorld
 from aurora_engine.physics.dynamic_physics_system import DynamicPhysicsSystem
 from aurora_engine.physics.static_physics_system import StaticPhysicsSystem
 from aurora_engine.rendering.animation_system import AnimationSystem
+from aurora_engine.rendering.light_system import LightSystem
 from aurora_engine.ui.ui_manager import UIManager
 from aurora_engine.utils.profiler import _profiler, profile_section
 
@@ -126,6 +127,10 @@ class Application(ABC):
             # Register Animation System
             self.logger.debug("Registering Animation System")
             self.world.add_system(AnimationSystem(self.renderer.backend))
+            
+            # Register Light System
+            self.logger.debug("Registering Light System")
+            self.world.add_system(LightSystem(self.renderer))
             
             self.logger.info("Initializing Game")
             self.initialize_game()

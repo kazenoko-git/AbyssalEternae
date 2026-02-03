@@ -23,6 +23,8 @@ class Mesh:
         self.normals: np.ndarray = np.array([], dtype=np.float32)  # Nx3
         self.uvs: np.ndarray = np.array([], dtype=np.float32)  # Nx2
         self.colors: Optional[np.ndarray] = None  # Nx4
+        self.tangents: np.ndarray = np.array([], dtype=np.float32) # Nx3
+        self.binormals: np.ndarray = np.array([], dtype=np.float32) # Nx3
 
         # Index buffer (for indexed rendering)
         self.indices: Optional[np.ndarray] = None
@@ -75,6 +77,55 @@ class Mesh:
             # Avoid division by zero
             norms[norms == 0] = 1.0
             self.normals = normals / norms
+
+    def calculate_tangents(self):
+        """Calculate tangents and binormals."""
+        with profile_section("CalcTangents"):
+            if self.indices is None or len(self.indices) == 0 or len(self.uvs) == 0:
+                return
+
+            num_verts = len(self.vertices)
+            tangents = np.zeros((num_verts, 3), dtype=np.float32)
+            binormals = np.zeros((num_verts, 3), dtype=np.float32)
+
+            for i in range(0, len(self.indices), 3):
+                i0, i1, i2 = self.indices[i], self.indices[i + 1], self.indices[i + 2]
+
+                v0 = self.vertices[i0]
+                v1 = self.vertices[i1]
+                v2 = self.vertices[i2]
+
+                uv0 = self.uvs[i0]
+                uv1 = self.uvs[i1]
+                uv2 = self.uvs[i2]
+
+                delta_pos1 = v1 - v0
+                delta_pos2 = v2 - v0
+
+                delta_uv1 = uv1 - uv0
+                delta_uv2 = uv2 - uv0
+
+                r = 1.0 / (delta_uv1[0] * delta_uv2[1] - delta_uv1[1] * delta_uv2[0] + 1e-6)
+                
+                tangent = (delta_pos1 * delta_uv2[1] - delta_pos2 * delta_uv1[1]) * r
+                binormal = (delta_pos2 * delta_uv1[0] - delta_pos1 * delta_uv2[0]) * r
+
+                tangents[i0] += tangent
+                tangents[i1] += tangent
+                tangents[i2] += tangent
+
+                binormals[i0] += binormal
+                binormals[i1] += binormal
+                binormals[i2] += binormal
+
+            # Normalize
+            t_norms = np.linalg.norm(tangents, axis=1, keepdims=True)
+            t_norms[t_norms == 0] = 1.0
+            self.tangents = tangents / t_norms
+            
+            b_norms = np.linalg.norm(binormals, axis=1, keepdims=True)
+            b_norms[b_norms == 0] = 1.0
+            self.binormals = binormals / b_norms
 
 
 class MeshRenderer(Component):
@@ -209,6 +260,7 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
     mesh.indices = np.array(indices, dtype=np.uint32)
 
     mesh.calculate_bounds()
+    mesh.calculate_tangents() # Calculate tangents for primitives
 
     return mesh
 
@@ -261,6 +313,7 @@ def create_sphere_mesh(radius: float = 1.0, segments: int = 16, rings: int = 8) 
     mesh.indices = np.array(indices, dtype=np.uint32)
 
     mesh.calculate_bounds()
+    mesh.calculate_tangents()
 
     return mesh
 
@@ -305,6 +358,7 @@ def create_plane_mesh(width: float = 1.0, height: float = 1.0) -> Mesh:
     mesh.indices = np.array(indices, dtype=np.uint32)
 
     mesh.calculate_bounds()
+    mesh.calculate_tangents()
 
     return mesh
 
@@ -407,4 +461,5 @@ def create_capsule_mesh(radius: float = 0.5, height: float = 1.0, segments: int 
     mesh.indices = np.array(indices, dtype=np.uint32)
     
     mesh.calculate_bounds()
+    mesh.calculate_tangents()
     return mesh

@@ -7,8 +7,11 @@ from aurora_engine.core.logging import get_logger
 from aurora_engine.input.input_manager import InputManager
 from aurora_engine.rendering.renderer import Renderer
 from aurora_engine.physics.physics_world import PhysicsWorld
+from aurora_engine.ecs.world import World
 from aurora_engine.ui.widget import Label
 from aurora_engine.scene.transform import Transform
+from aurora_engine.rendering.light import DirectionalLight, AmbientLight
+from game.systems.day_night_cycle import DayNightCycle
 
 logger = get_logger()
 
@@ -17,7 +20,8 @@ class DebugManager:
     Manages debug features like overlays, wireframe toggles, and secondary cameras.
     """
     
-    def __init__(self, renderer: Renderer, input_manager: InputManager, physics_world: PhysicsWorld, ui_manager):
+    def __init__(self, world: World, renderer: Renderer, input_manager: InputManager, physics_world: PhysicsWorld, ui_manager):
+        self.world = world
         self.renderer = renderer
         self.input = input_manager
         self.physics = physics_world
@@ -28,6 +32,8 @@ class DebugManager:
         self.debug_node_path = None
         self.f3_pressed = False
         self.f4_pressed = False
+        self.f5_pressed = False
+        self.show_lighting_debug = False
         
         # Secondary Camera
         self.secondary_window = None
@@ -40,7 +46,14 @@ class DebugManager:
         # UI
         self.debug_label = Label("DebugInfo", "FPS: 60")
         self.debug_label.position = np.array([10, 10], dtype=np.float32)
+        self.debug_label.color = (0, 0, 0, 1) # Black text
         self.ui.add_widget(self.debug_label, layer='overlay')
+        
+        self.lighting_label = Label("LightingInfo", "Lighting Debug Off")
+        self.lighting_label.position = np.array([10, 50], dtype=np.float32)
+        self.lighting_label.color = (1, 0, 0, 1) # Red text
+        self.lighting_label.visible = False
+        self.ui.add_widget(self.lighting_label, layer='overlay')
 
     def update(self, dt: float, player_pos: np.ndarray):
         """Update debug logic."""
@@ -52,7 +65,7 @@ class DebugManager:
 
     def _handle_input(self):
         """Handle debug key toggles."""
-        # F3: Toggle Wireframe / Physics Debug
+        # F3: Toggle Wireframe / Physics Debug / FrameRate
         if self.input.is_key_down('f3'):
             if not self.f3_pressed:
                 self.f3_pressed = True
@@ -60,11 +73,25 @@ class DebugManager:
         else:
             self.f3_pressed = False
             
-        # F3 + F4: Toggle Secondary Camera
-        if self.input.is_key_down('f3') and self.input.is_key_down('f4'):
-            if not self.debug_camera_active:
-                self.debug_camera_active = True
-                self._open_secondary_window()
+        # F4: Toggle Secondary Camera
+        if self.input.is_key_down('f4'):
+            if not self.f4_pressed:
+                self.f4_pressed = True
+                if not self.debug_camera_active:
+                    self.debug_camera_active = True
+                    self._open_secondary_window()
+        else:
+            self.f4_pressed = False
+            
+        # F5: Toggle Lighting Debug
+        if self.input.is_key_down('f5'):
+            if not self.f5_pressed:
+                self.f5_pressed = True
+                self.show_lighting_debug = not self.show_lighting_debug
+                self.lighting_label.visible = self.show_lighting_debug
+                logger.info(f"Toggled Lighting Debug: {self.show_lighting_debug}")
+        else:
+            self.f5_pressed = False
 
     def _toggle_debug_view(self):
         """Toggle visual debug modes."""
@@ -90,6 +117,45 @@ class DebugManager:
         if self.debug_label.visible:
             fps = 1.0 / dt if dt > 0 else 60.0
             self.debug_label.text = f"FPS: {fps:.0f} | Pos: {player_pos[0]:.1f}, {player_pos[1]:.1f}, {player_pos[2]:.1f}"
+            
+        if self.show_lighting_debug:
+            self.lighting_label.text = self._get_lighting_info()
+
+    def _get_lighting_info(self) -> str:
+        """Retrieve current lighting stats."""
+        info = "Lighting Info:\n"
+        
+        # Find DayNightCycle
+        day_night = None
+        for sys in self.world.systems:
+            if isinstance(sys, DayNightCycle):
+                day_night = sys
+                break
+        
+        if day_night:
+            info += f"Time: {day_night.time:.2f}\n"
+            
+            if day_night.sun_entity:
+                light = day_night.sun_entity.get_component(DirectionalLight)
+                if light:
+                    c = light.color
+                    info += f"Sun: ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) Int: {light.intensity:.2f}\n"
+            
+            if day_night.moon_entity:
+                light = day_night.moon_entity.get_component(DirectionalLight)
+                if light:
+                    c = light.color
+                    info += f"Moon: ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) Int: {light.intensity:.2f}\n"
+                    
+            if day_night.ambient_entity:
+                light = day_night.ambient_entity.get_component(AmbientLight)
+                if light:
+                    c = light.color
+                    info += f"Amb: ({c[0]:.2f}, {c[1]:.2f}, {c[2]:.2f}) Int: {light.intensity:.2f}\n"
+        else:
+            info += "DayNightCycle System not found."
+            
+        return info
 
     def _open_secondary_window(self):
         """Open a secondary window for global observation."""
