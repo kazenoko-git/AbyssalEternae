@@ -54,16 +54,21 @@ def load_gltf_fixed(loader, file_path: str, keep_temp_file: bool = False):
         
         temp_filename = f"{os.path.basename(file_path)}.{path_hash}.fixed"
         
-        # Use a dedicated temp directory for the engine if possible, or just next to the file
-        # Next to file is better for relative textures
-        temp_dir = os.path.dirname(file_path)
+        # Use a dedicated cache directory
+        # Try to use 'cache' directory in project root
+        # Assuming project root is 2 levels up from this file (aurora_engine/utils/gltf_loader.py)
+        # But safer to use a relative path from CWD if possible, or just a known cache dir
         
-        # Ensure we can write to the directory, otherwise use a temp dir
-        if not os.access(temp_dir, os.W_OK):
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            
-        temp_path = os.path.join(temp_dir, temp_filename)
+        cache_dir = os.path.abspath("cache")
+        if not os.path.exists(cache_dir):
+            try:
+                os.makedirs(cache_dir)
+            except:
+                # Fallback to temp dir if we can't create 'cache'
+                import tempfile
+                cache_dir = tempfile.gettempdir()
+        
+        temp_path = os.path.join(cache_dir, temp_filename)
         
         # Determine extension
         is_glb = False

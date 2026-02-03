@@ -235,3 +235,5 @@ __marimo__/
 
 *.bam
 *.boo
+
+game/cache/
