@@ -3,19 +3,14 @@
 from aurora_engine.ecs.system import System
 from aurora_engine.rendering.mesh import MeshRenderer
 from game.components.fade_in import FadeInEffect
-from panda3d.core import TransparencyAttrib
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
 
 class FadeInSystem(System):
     """
-    System to update FadeInEffect components.
+    Manages the fade-in effect for newly spawned entities.
     """
-
-    def __init__(self):
-        super().__init__()
-        # logger.debug("FadeInSystem initialized")
 
     def get_required_components(self):
         return [FadeInEffect, MeshRenderer]
@@ -25,22 +20,29 @@ class FadeInSystem(System):
             fade = entity.get_component(FadeInEffect)
             renderer = entity.get_component(MeshRenderer)
             
-            if not hasattr(renderer, '_node_path') or not renderer._node_path:
-                continue
+            if fade.elapsed < fade.duration:
+                fade.elapsed += dt
+                alpha = min(1.0, fade.elapsed / fade.duration)
                 
-            # Initialize transparency on first frame
-            if fade.elapsed == 0.0:
-                renderer._node_path.setTransparency(TransparencyAttrib.MAlpha)
-                
-            fade.elapsed += dt
-            progress = min(1.0, fade.elapsed / fade.duration)
-            fade.current_alpha = progress
-            
-            # Update alpha
-            renderer._node_path.setAlphaScale(progress)
-            
-            # Remove component when done
-            if progress >= 1.0:
-                renderer._node_path.clearTransparency()
+                # Update transparency
+                # Assuming renderer has a way to set alpha or color
+                # If color is (r, g, b, a)
+                if hasattr(renderer, 'color'):
+                    current_color = list(renderer.color)
+                    if len(current_color) == 4:
+                        # Interpolate alpha from 0 to target (usually 1.0)
+                        # But we don't know original alpha. Let's assume 1.0 target.
+                        current_color[3] = alpha
+                        renderer.color = tuple(current_color)
+                        
+                        # Update backend node transparency
+                        if hasattr(renderer, '_node_path') and renderer._node_path:
+                            renderer._node_path.setTransparency(True)
+                            renderer._node_path.setAlphaScale(alpha)
+            else:
+                # Fade complete
                 entity.remove_component(FadeInEffect)
-                # logger.debug(f"Fade-in complete for Entity {entity.id}")
+                # Ensure full opacity
+                if hasattr(renderer, '_node_path') and renderer._node_path:
+                    renderer._node_path.clearTransparency()
+                    renderer._node_path.setAlphaScale(1.0)

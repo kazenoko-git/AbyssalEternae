@@ -1,0 +1,16 @@
+{
+    "model_path": "assets/characters/playable/maleMC/maleMC.glb",
+    "animations": {
+        "Idle": {"path": "assets/characters/playable/maleMC/idle.glb", "speed": 1.0},
+        "Walk": {"path": "assets/characters/playable/maleMC/walk.glb", "speed": 1.2},
+        "Run": {"path": "assets/characters/playable/maleMC/run.glb", "speed": 1.0}
+    },
+    "collider": {
+        "radius": 0.25,
+        "height": 1.9,
+        "offset": [0.0, 0.0, 0.9]
+    },
+    "mass": 80.0,
+    "movement_speed": 5.0,
+    "run_multiplier": 1.5
+}

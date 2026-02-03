@@ -252,8 +252,17 @@ class DayNightCycle(System):
         ambient = self._interpolate_color(self.ambient_colors, self.time)
         
         # Apply colors (no more switching lights on/off)
-        self.renderer.backend.base.setBackgroundColor(sky_color)
-        self.fog.setColor(sky_color)
-        self.sun_light_node.node().setColor(sun_color)
-        self.moon_light_node.node().setColor(moon_color)
-        self.ambient_light_node.node().setColor(ambient)
+        if hasattr(self.renderer.backend, 'base'):
+            self.renderer.backend.base.setBackgroundColor(sky_color)
+        
+        if self.fog:
+            self.fog.setColor(sky_color)
+            
+        if self.sun_light_node:
+            self.sun_light_node.node().setColor(sun_color)
+            
+        if self.moon_light_node:
+            self.moon_light_node.node().setColor(moon_color)
+            
+        if self.ambient_light_node:
+            self.ambient_light_node.node().setColor(ambient)
