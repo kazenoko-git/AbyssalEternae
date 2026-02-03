@@ -16,7 +16,7 @@ from aurora_engine.database.db_manager import DatabaseManager
 from aurora_engine.database.schema import DatabaseSchema
 from game.utils.chunk_worker import generate_chunk_meshes
 from game.utils.terrain import get_height_at_world_pos
-from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider
+from aurora_engine.physics.collider import HeightfieldCollider, MeshCollider, BoxCollider, Collider, CapsuleCollider
 from aurora_engine.physics.rigidbody import RigidBody, StaticBody
 from aurora_engine.core.logging import get_logger
 from aurora_engine.ui.image import ImageWidget
@@ -87,15 +87,19 @@ class AbyssalEternae(Application):
         # REVERTED: Back to logical mapping. We will debug the logic instead of swapping files blindly.
         animator.add_clip("Idle", path=base_path + "idle.glb", speed=1.0)
         animator.add_clip("Walk", path=base_path + "walk.glb", speed=1.2)
-        animator.add_clip("Run", path=base_path + "run.glb", speed=1.5)
+        # Reduced Run animation speed from 1.5 to 1.0 to match slower movement
+        animator.add_clip("Run", path=base_path + "run.glb", speed=1.0)
         
         animator.play("Idle")
         
         # Add player physics
-        # Tighter collider to match character model (approx 1.8m tall, 0.5m wide)
-        collider = Collider(BoxCollider(np.array([0.5, 0.5, 1.8], dtype=np.float32)))
-        # Offset center up by half height (0.9) so bottom is at 0
-        collider.offset = np.array([0.0, 0.0, 0.9], dtype=np.float32) 
+        # Switching to CapsuleCollider for better character physics
+        # User manually updated: Radius 0.2, Height 1.9
+        collider = Collider(CapsuleCollider(radius=0.2, height=1.9))
+        
+        # User manually updated: Offset 0.9
+        collider.offset = np.array([0.0, 0.0, 0.9], dtype=np.float32)
+        
         self.player.add_component(collider)
 
         rb = self.player.add_component(RigidBody())

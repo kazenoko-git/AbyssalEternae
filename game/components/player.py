@@ -14,8 +14,14 @@ class PlayerController(Component):
     def __init__(self):
         super().__init__()
 
-        self.move_speed = 5.0
-        self.sprint_speed = 10.0
+        # Adjusted speeds to match animation
+        # Previous move_speed was 5.0. Previous sneak was 5.0 * 0.5 = 2.5.
+        # User wants walking speed to match previous crouching speed (2.5).
+        self.move_speed = 2.5 
+        
+        # User wants running speed slower than 10.0. Let's try 6.0.
+        self.sprint_speed = 6.0
+
         self.jump_force = 8.0
 
         self.inventory = []

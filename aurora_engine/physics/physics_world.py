@@ -84,7 +84,14 @@ class PhysicsWorld:
         if collider:
             shape = self._create_bullet_shape(collider)
             if shape:
-                node.addShape(shape)
+                # Apply local offset if present
+                # Bullet allows adding shapes with a local transform
+                if np.linalg.norm(collider.offset) > 0.001:
+                    from panda3d.core import TransformState, Point3
+                    offset_ts = TransformState.makePos(Point3(collider.offset[0], collider.offset[1], collider.offset[2]))
+                    node.addShape(shape, offset_ts)
+                else:
+                    node.addShape(shape)
                 
         # Set initial transform
         transform = entity.get_component(Transform)
@@ -125,7 +132,13 @@ class PhysicsWorld:
         if collider:
             shape = self._create_bullet_shape(collider)
             if shape:
-                node.addShape(shape)
+                # Apply local offset if present
+                if np.linalg.norm(collider.offset) > 0.001:
+                    from panda3d.core import TransformState, Point3
+                    offset_ts = TransformState.makePos(Point3(collider.offset[0], collider.offset[1], collider.offset[2]))
+                    node.addShape(shape, offset_ts)
+                else:
+                    node.addShape(shape)
         
         # Set transform
         transform = entity.get_component(Transform)
