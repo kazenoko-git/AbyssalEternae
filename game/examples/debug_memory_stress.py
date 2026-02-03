@@ -22,18 +22,14 @@ def run_stress_test():
     logger.info("Starting Memory Stress Test...")
     
     db_config = {
-        'host': 'localhost',
-        'user': 'root',
-        'password': 'CeneX_1234',
-        'database': 'abyssal_eternae_stress_test',
-        'port': 3306
+        'database': 'eternae_stress_test.db'
     }
     
     try:
         db_manager = DatabaseManager(db_config)
         db_manager.connect()
     except Exception as e:
-        logger.error(f"Failed to connect to MySQL: {e}")
+        logger.error(f"Failed to connect to SQLite: {e}")
         return
 
     # Reset DB

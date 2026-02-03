@@ -23,14 +23,14 @@ from game.managers.environment_manager import EnvironmentManager
 
 logger = get_logger()
 
-class AbyssalEternae(Application):
+class Eternae(Application):
     """
     The Main RPG Game Application.
     """
 
     def initialize_game(self):
         """Game-specific initialization."""
-        logger.info("Initializing Abyssal Eternae Game...")
+        logger.info("Initializing Eternae Game...")
         
         # Initialize Database
         self._setup_database()
@@ -78,11 +78,7 @@ class AbyssalEternae(Application):
         db_config = self.config.get('database', {})
         if not db_config:
              db_config = {
-                'host': 'localhost',
-                'user': 'root',
-                'password': '',
-                'database': 'abyssal_eternae_db',
-                'port': 3306
+                'database': 'eternae.db'
             }
             
         self.db_manager = DatabaseManager(db_config)
@@ -129,19 +125,15 @@ if __name__ == "__main__":
             'rendering': {
                 'width': 1280,
                 'height': 720,
-                'title': 'Abyssal Eternae',
+                'title': 'Eternae',
             },
             'database': {
-                'host': 'localhost',
-                'user': 'root',
-                'password': 'Yippee_12345',
-                'database': 'abyssal_eternae_db',
-                'port': 3306
+                'database': 'eternae.db'
             }
         }
 
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
 
-    game = AbyssalEternae(config_path)
+    game = Eternae(config_path)
     game.run()

@@ -41,11 +41,7 @@ class WorldGenTest(Application):
         db_config = self.config.get('database', {})
         if not db_config:
              db_config = {
-                'host': 'localhost',
-                'user': 'root',
-                'password': '',
-                'database': 'abyssal_eternae_test_db',
-                'port': 3306
+                'database': 'eternae_test.db'
             }
             
         self.db_manager = DatabaseManager(db_config)
@@ -286,11 +282,7 @@ if __name__ == "__main__":
             'title': 'World Gen Test',
         },
         'database': {
-            'host': 'localhost',
-            'user': 'root',
-            'password': 'CeneX_1234',
-            'database': 'abyssal_eternae_test_db',
-            'port': 3306
+            'database': 'eternae_test.db'
         }
     }
     

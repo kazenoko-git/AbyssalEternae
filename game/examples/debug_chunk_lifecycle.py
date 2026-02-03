@@ -25,11 +25,7 @@ class ChunkLifecycleTest(Application):
         
         # DB Setup
         db_config = {
-            'host': 'localhost',
-            'user': 'root',
-            'password': 'CeneX_1234',
-            'database': 'abyssal_eternae_lifecycle_test',
-            'port': 3306
+            'database': 'eternae_lifecycle_test.db'
         }
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
@@ -113,7 +109,7 @@ if __name__ == "__main__":
     # Minimal config
     config = {
         'rendering': {'width': 800, 'height': 600, 'title': 'Lifecycle Test'},
-        'database': {}
+        'database': {'database': 'eternae_lifecycle_test.db'}
     }
     with open("debug_config.json", "w") as f:
         json.dump(config, f)

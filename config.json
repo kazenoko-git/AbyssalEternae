@@ -2,13 +2,9 @@
   "rendering": {
     "width": 1280,
     "height": 720,
-    "title": "Abyssal Eternae"
+    "title": "Eternae"
   },
   "database": {
-    "host": "localhost",
-    "user": "root",
-    "password": "CeneX_1234",
-    "database": "abyssal_eternae_db",
-    "port": 3306
+    "database": "eternae.db"
   }
 }
