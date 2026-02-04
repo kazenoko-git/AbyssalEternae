@@ -26,15 +26,9 @@ class EnvironmentManager:
 
     def _setup_fog(self):
         """Setup distance fog for performance and atmosphere."""
-        fog = Fog("DistanceFog")
-        fog.setColor(0.53, 0.8, 0.92) # Sky blue
-        
-        # Use fog radius from world manager
-        density = 1.0 / self.world_manager.fog_radius
-        fog.setExpDensity(density) 
-        
+        # Fog disabled by user request
         if hasattr(self.renderer.backend, 'scene_graph'):
-            self.renderer.backend.scene_graph.setFog(fog)
+            self.renderer.backend.scene_graph.clearFog()
 
     def _create_celestial_bodies(self):
         """Create visual entities for Sun and Moon."""

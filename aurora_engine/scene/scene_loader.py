@@ -119,9 +119,9 @@ class SceneLoader:
                 if 'position' in trans_data:
                     transform.set_local_position(np.array(trans_data['position'], dtype=np.float32))
                 if 'rotation' in trans_data:
-                    transform.local_rotation = np.array(trans_data['rotation'], dtype=np.float32)
+                    transform.set_local_rotation(np.array(trans_data['rotation'], dtype=np.float32))
                 if 'scale' in trans_data:
-                    transform.local_scale = np.array(trans_data['scale'], dtype=np.float32)
+                    transform.set_local_scale(np.array(trans_data['scale'], dtype=np.float32))
 
             return entity
         except Exception as e:

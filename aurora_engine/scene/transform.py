@@ -90,6 +90,11 @@ class Transform:
         self.local_rotation = rotation.copy()
         self._mark_dirty()
 
+    def set_local_scale(self, scale: np.ndarray):
+        """Set scale in local space."""
+        self.local_scale = scale.copy()
+        self._mark_dirty()
+
     def set_world_position(self, position: np.ndarray):
         """Set position in world space."""
         if self.parent:

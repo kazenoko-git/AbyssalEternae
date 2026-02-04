@@ -9,7 +9,7 @@ from aurora_engine.core.logging import get_logger
 from panda3d.core import AmbientLight as PandaAmbientLight
 from panda3d.core import DirectionalLight as PandaDirectionalLight
 from panda3d.core import PointLight as PandaPointLight
-from panda3d.core import Vec4, NodePath
+from panda3d.core import Vec4, NodePath, BitMask32
 
 logger = get_logger()
 
@@ -34,10 +34,6 @@ class LightSystem(System):
         if should_log:
             self._debug_log_timer = 0.0
         
-        # Clear all lights from the scene graph to ensure only our lights are active
-        if hasattr(self.renderer.backend, 'scene_graph'):
-            self.renderer.backend.scene_graph.clearLight()
-            
         for entity in entities:
             light = entity.get_component(Light)
             
@@ -47,8 +43,6 @@ class LightSystem(System):
                 self._initialized_lights.add(entity.id)
                 
             if light._backend_handle:
-                # Re-apply light to scene graph since we cleared it
-                self.renderer.backend.scene_graph.setLight(light._backend_handle)
                 self._update_light(entity, light, should_log)
 
     def on_entity_removed(self, entity):
@@ -56,6 +50,8 @@ class LightSystem(System):
         light = entity.get_component(Light)
         if light and light._backend_handle:
             # The light is already cleared from scene graph, just remove the node
+            if hasattr(self.renderer.backend, 'scene_graph'):
+                self.renderer.backend.scene_graph.clearLight(light._backend_handle)
             light._backend_handle.removeNode()
             light._backend_handle = None
         if entity.id in self._initialized_lights:
@@ -74,8 +70,13 @@ class LightSystem(System):
             if light.cast_shadows:
                 panda_light.setShadowCaster(True, light.shadow_map_size, light.shadow_map_size)
                 lens = panda_light.getLens()
+                # Ensure film size is large enough to cover the view
                 lens.setFilmSize(light.shadow_film_size, light.shadow_film_size)
                 lens.setNearFar(*light.shadow_near_far)
+                
+                # Visualize Shadow Volume (Enabled for debugging)
+                # panda_light.showFrustum()
+                logger.info(f"  -> Shadows Enabled: Map={light.shadow_map_size}, Film={light.shadow_film_size}")
                 
         elif isinstance(light, PointLight):
             panda_light = PandaPointLight(name)
@@ -84,7 +85,14 @@ class LightSystem(System):
         if panda_light:
             # Attach to scene graph
             light_np = self.renderer.backend.scene_graph.attachNewNode(panda_light)
+            self.renderer.backend.scene_graph.setLight(light_np)
             light._backend_handle = light_np
+            
+            # Force Shadow Bitmasks
+            if isinstance(light, DirectionalLight) and light.cast_shadows:
+                # Ensure everything is visible to the shadow camera
+                # BitMask32.allOn() might be too aggressive if we use masks, but good for debugging
+                panda_light.setCameraMask(BitMask32.allOn())
             
             logger.info(f"Initialized light: {name} ({type(light).__name__})")
 

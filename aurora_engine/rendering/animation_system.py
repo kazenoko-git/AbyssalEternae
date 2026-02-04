@@ -151,16 +151,98 @@ class AnimationSystem(System):
                 for node in nodes:
                     node.hide()
 
-            # 7. Replace static mesh node
-            if mesh_renderer._node_path:
-                mesh_renderer._node_path.removeNode()
+            # 7. Normalize Scale and Center (Same as Renderer)
+            # This is critical because Renderer's logic doesn't run on Actor created here
+            min_pt, max_pt = actor.getTightBounds()
+            size = max_pt - min_pt
+            max_dim = max(size.getX(), size.getY(), size.getZ())
             
-            mesh_renderer._node_path = actor
-            animator._actor = actor
+            # Center the model (Pivot at bottom center)
+            bottom_center = Point3((min_pt.getX() + max_pt.getX()) / 2.0,
+                                   (min_pt.getY() + max_pt.getY()) / 2.0,
+                                   min_pt.getZ())
             
-            # 8. Ensure Visibility & Correct Rendering
-            actor.show()
-            
+            # Offset to bring bottom center to (0,0,0)
+            if bottom_center.length() > 0.1:
+                # For Actor, we can't just setPos on the actor itself if we want to bake it,
+                # but we can setPos on the GeomNode or use flattenLight if it doesn't break animations.
+                # Flattening Actor usually breaks animations.
+                # Instead, we should apply a counter-transform to the joints or a child node.
+                # Or simpler: Just set the position offset on the Actor, and let the Entity transform apply on top.
+                # BUT Renderer applies Entity transform to mesh_renderer._node_path (which is the Actor).
+                # So if we setPos here, it will be overwritten by Renderer.
+                # We need to wrap the Actor in a container node?
+                # Or modify the Actor's internal geometry.
+                # Actor.getChild(0).setPos(-bottom_center)?
+                
+                # Let's try wrapping it.
+                # But mesh_renderer._node_path expects to be the root.
+                
+                # Actually, Renderer uses setPos/setQuat/setScale on _node_path.
+                # If we want an offset, we need a child.
+                # But _node_path IS the Actor.
+                
+                # Alternative: Modify the joints? Too complex.
+                # Let's try to find the GeomNode and move it.
+                # actor.getGeomNode().setPos(-bottom_center)
+                pass
+
+            # Scale logic
+            scale_factor = 1.0
+            if max_dim > 10.0:
+                scale_factor = 2.0 / max_dim
+                logger.info(f"Auto-scaled massive Actor by {scale_factor:.4f}")
+            elif max_dim < 0.1 and max_dim > 0:
+                scale_factor = 2.0 / max_dim
+                logger.info(f"Auto-scaled tiny Actor by {scale_factor:.4f}")
+                
+            if scale_factor != 1.0:
+                actor.setScale(scale_factor)
+                # We can't flatten Actor. So we just leave the scale.
+                # Renderer will overwrite scale?
+                # Renderer: self.backend.update_mesh_transform(mesh_renderer._node_path, pos, rot, scale)
+                # Renderer applies Entity scale.
+                # If we set scale here, Renderer will overwrite it with Entity scale (usually 1,1,1).
+                # So the auto-scale is lost!
+                
+                # Solution: We need to bake the scale into the model BEFORE creating Actor?
+                # Or use a container node.
+                
+                # Let's use a container node.
+                container = NodePath("ActorContainer")
+                container.reparentTo(self.backend.scene_graph)
+                actor.reparentTo(container)
+                
+                # Apply offset/scale to Actor (child of container)
+                if bottom_center.length() > 0.1:
+                    actor.setPos(-bottom_center)
+                actor.setScale(scale_factor)
+                
+                # Set _node_path to container
+                # But wait, Animator needs _actor to control animations.
+                # Animator._actor is already set to actor.
+                # MeshRenderer._node_path should be the container so Renderer moves the container.
+                
+                # 8. Replace static mesh node
+                if mesh_renderer._node_path:
+                    mesh_renderer._node_path.removeNode()
+                
+                mesh_renderer._node_path = container
+                animator._actor = actor # Keep reference to actual actor for control
+                
+                # Ensure visibility
+                container.show()
+                actor.show()
+                
+                logger.info("Wrapped Actor in container for normalization.")
+            else:
+                # No scaling needed
+                if mesh_renderer._node_path:
+                    mesh_renderer._node_path.removeNode()
+                mesh_renderer._node_path = actor
+                animator._actor = actor
+                actor.show()
+
             # Remove any problematic overrides. Let the main renderer/shader handle it.
             actor.clearShader()
             actor.clearLight()

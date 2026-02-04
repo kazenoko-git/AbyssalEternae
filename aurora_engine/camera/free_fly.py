@@ -2,7 +2,7 @@
 
 import numpy as np
 from aurora_engine.camera.camera_controller import CameraController
-from aurora_engine.utils.math import quaternion_from_euler
+from aurora_engine.utils.math import quaternion_from_axis_angle, quaternion_multiply
 from aurora_engine.core.logging import get_logger
 
 logger = get_logger()
@@ -63,9 +63,14 @@ class FreeFlyController(CameraController):
         self.camera.transform.set_world_position(new_pos)
 
         # Apply rotation
-        euler = np.array([np.radians(self.pitch), np.radians(self.yaw), 0], dtype=np.float32)
-        rotation = quaternion_from_euler(euler)
-        self.camera.transform.local_rotation = rotation
+        # Construct rotation: Yaw (Global Z) * Pitch (Local X)
+        # This prevents "rolling" or tilting the camera
+        q_yaw = quaternion_from_axis_angle(np.array([0, 0, 1], dtype=np.float32), np.radians(self.yaw))
+        q_pitch = quaternion_from_axis_angle(np.array([1, 0, 0], dtype=np.float32), np.radians(self.pitch))
+        
+        # Combine: Yaw applied first (parent), then Pitch (child/local)
+        rotation = quaternion_multiply(q_yaw, q_pitch)
+        self.camera.transform.set_local_rotation(rotation)
 
         # Decay velocity
         self.velocity *= 0.9

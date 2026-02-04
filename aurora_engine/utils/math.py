@@ -28,6 +28,16 @@ def quaternion_from_euler(euler: np.ndarray) -> np.ndarray:
     return np.array([x, y, z, w], dtype=np.float32)
 
 
+def quaternion_from_axis_angle(axis: np.ndarray, angle_rad: float) -> np.ndarray:
+    """
+    Create quaternion from axis and angle (radians).
+    """
+    half_angle = angle_rad * 0.5
+    s = np.sin(half_angle)
+    c = np.cos(half_angle)
+    return np.array([axis[0] * s, axis[1] * s, axis[2] * s, c], dtype=np.float32)
+
+
 def quaternion_to_euler(quat: np.ndarray) -> np.ndarray:
     """
     Convert quaternion [x, y, z, w] to Euler angles.

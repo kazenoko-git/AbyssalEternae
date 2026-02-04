@@ -9,7 +9,7 @@ from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, Mesh
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.profiler import profile_section
-from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3, NodePath, Material
+from panda3d.core import Vec4, BillboardEffect, Filename, getModelPath, Point3, NodePath, Material, TransparencyAttrib
 import os
 
 class Renderer:
@@ -96,7 +96,7 @@ class Renderer:
             mesh_renderer = entity.get_component(MeshRenderer)
             if mesh_renderer and mesh_renderer.enabled:
                 self._render_mesh(entity, mesh_renderer)
-
+            
     def _render_mesh(self, entity, mesh_renderer):
         """Render a single mesh."""
         transform = entity.get_component(Transform)
@@ -191,48 +191,59 @@ class Renderer:
                         tex_path = tex_path.replace('\\', '/')
                         tex = self.backend.base.loader.loadTexture(tex_path)
                         mesh_renderer._node_path.setTexture(tex, 1)
-                        mesh_renderer._node_path.setTransparency(True)
+                        mesh_renderer._node_path.setTransparency(TransparencyAttrib.MAlpha)
                     except Exception as e:
                         self.logger.warning(f"Failed to load texture {mesh_renderer.texture_path}: {e}")
                 
                 # Apply billboard effect if requested
                 if hasattr(mesh_renderer, 'billboard') and mesh_renderer.billboard:
                     mesh_renderer._node_path.setEffect(BillboardEffect.makePointEye())
-                    
-                # --- PBR MATERIAL FIX ---
-                # Ensure a Panda Material is attached for lighting if none exists
-                if not mesh_renderer._node_path.hasMaterial():
-                    m = Material()
-                    m.setBaseColor((1, 1, 1, 1))
-                    m.setAmbient((0.2, 0.2, 0.2, 1))
-                    m.setDiffuse((0.8, 0.8, 0.8, 1))
-                    m.setSpecular((0.0, 0.0, 0.0, 1)) # No specular for default
-                    m.setRoughness(0.9)
-                    mesh_renderer._node_path.setMaterial(m)
         
+        # --- UPDATE & MATERIAL APPLICATION (Runs every frame to handle dynamic node replacement) ---
         if hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
+            
+            # --- Material Fix for Lighting ---
+            # Ensure a Panda Material is attached for lighting if none exists
+            # This is critical for setShaderAuto() to work correctly
+            if not mesh_renderer._node_path.hasMaterial():
+                m = Material()
+                m.setBaseColor((1, 1, 1, 1)) # Default to white, will be modulated by vertex/flat color
+                m.setAmbient((1, 1, 1, 1))   # Let ambient light control ambient color fully
+                m.setDiffuse((1, 1, 1, 1))   # Let diffuse light control diffuse color fully
+                m.setSpecular((0.2, 0.2, 0.2, 1)) # Moderate specular for definition
+                m.setEmission((0.0, 0.0, 0.0, 1)) # ZERO emission
+                m.setRoughness(0.6) # Lower roughness to see lighting better
+                mesh_renderer._node_path.setMaterial(m, 1)
+
             # Update transform
             pos = transform.get_world_position()
             rot = transform.get_world_rotation()
             scale = transform.get_world_scale()
-            
             self.backend.update_mesh_transform(mesh_renderer._node_path, pos, rot, scale)
             
-            # Apply material or default color
-            if mesh_renderer.material:
-                mesh_renderer.material.apply(mesh_renderer._node_path)
+            # --- Color Application Logic ---
+            # 1. Prioritize vertex colors
+            if mesh_renderer.mesh and mesh_renderer.mesh.colors is not None and len(mesh_renderer.mesh.colors) > 0:
+                # This mesh has vertex colors. Tell Panda to use them for lighting.
+                mesh_renderer._node_path.setColorOff(1)
             else:
-                if mesh_renderer.mesh and mesh_renderer.mesh.colors is not None and len(mesh_renderer.mesh.colors) > 0:
-                    mesh_renderer._node_path.setColorOff()
-                else:
-                    if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
-                         mesh_renderer._node_path.setColor(1, 1, 1, 1)
-                    else:
-                         mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color))
-            
+                # 2. No vertex colors, check for texture
+                if hasattr(mesh_renderer, 'texture_path') and mesh_renderer.texture_path:
+                     # Has a texture, set color to white to not tint it.
+                     mesh_renderer._node_path.setColor(1, 1, 1, 1, 1)
+                elif hasattr(mesh_renderer, 'color'):
+                     # 3. No vertex colors or texture, use the flat color.
+                     mesh_renderer._node_path.setColor(Vec4(*mesh_renderer.color), 1)
+
+            # Transparency
             if mesh_renderer.alpha < 1.0:
+                mesh_renderer._node_path.setTransparency(TransparencyAttrib.MAlpha)
                 mesh_renderer._node_path.setAlphaScale(mesh_renderer.alpha)
+            else:
+                # Ensure depth write is ON for opaque objects to prevent "flat" look due to sorting
+                mesh_renderer._node_path.setTransparency(TransparencyAttrib.MNone)
             
+            # Visibility
             if not mesh_renderer.visible:
                 mesh_renderer._node_path.hide()
             else:

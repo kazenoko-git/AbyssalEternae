@@ -175,84 +175,54 @@ def create_cube_mesh(size: float = 1.0) -> Mesh:
     mesh = Mesh("Cube")
 
     s = size / 2.0
-
-    # Vertices (24 vertices for proper normals per face)
+    
+    # Explicitly define 24 vertices (4 per face) to ensure sharp edges (normals)
+    # Winding order: Counter-Clockwise (CCW) for Front Facing
+    
     vertices = [
-        # Front face (Y+)
-        [-s, s, -s], [s, s, -s], [s, s, s], [-s, s, s],
-        # Back face (Y-)
-        [s, -s, -s], [-s, -s, -s], [-s, -s, s], [s, -s, s],
-        # Top face (Z+)
-        [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
-        # Bottom face (Z-)
-        [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
-        # Right face (X+)
-        [s, -s, -s], [s, s, -s], [s, s, s], [s, -s, s],
-        # Left face (X-)
-        [-s, -s, -s], [-s, s, -s], [-s, s, s], [-s, -s, s],
+        # Front Face (Y+)
+        [-s, s, -s], [ s, s, -s], [ s, s,  s], [-s, s,  s], # 0, 1, 2, 3
+        # Back Face (Y-)
+        [ s, -s, -s], [-s, -s, -s], [-s, -s,  s], [ s, -s,  s], # 4, 5, 6, 7
+        # Left Face (X-)
+        [-s, -s, -s], [-s,  s, -s], [-s,  s,  s], [-s, -s,  s], # 8, 9, 10, 11
+        # Right Face (X+)
+        [ s,  s, -s], [ s, -s, -s], [ s, -s,  s], [ s,  s,  s], # 12, 13, 14, 15
+        # Top Face (Z+)
+        [-s,  s,  s], [ s,  s,  s], [ s, -s,  s], [-s, -s,  s], # 16, 17, 18, 19
+        # Bottom Face (Z-)
+        [-s, -s, -s], [ s, -s, -s], [ s,  s, -s], [-s,  s, -s], # 20, 21, 22, 23
     ]
 
     # Normals
     normals = [
-        # Front (Y+)
-        [0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0],
-        # Back (Y-)
-        [0, -1, 0], [0, -1, 0], [0, -1, 0], [0, -1, 0],
-        # Top (Z+)
-        [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1],
-        # Bottom (Z-)
-        [0, 0, -1], [0, 0, -1], [0, 0, -1], [0, 0, -1],
-        # Right (X+)
-        [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0],
-        # Left (X-)
-        [-1, 0, 0], [-1, 0, 0], [-1, 0, 0], [-1, 0, 0],
+        [ 0,  1,  0], [ 0,  1,  0], [ 0,  1,  0], [ 0,  1,  0], # Front
+        [ 0, -1,  0], [ 0, -1,  0], [ 0, -1,  0], [ 0, -1,  0], # Back
+        [-1,  0,  0], [-1,  0,  0], [-1,  0,  0], [-1,  0,  0], # Left
+        [ 1,  0,  0], [ 1,  0,  0], [ 1,  0,  0], [ 1,  0,  0], # Right
+        [ 0,  0,  1], [ 0,  0,  1], [ 0,  0,  1], [ 0,  0,  1], # Top
+        [ 0,  0, -1], [ 0,  0, -1], [ 0,  0, -1], [ 0,  0, -1], # Bottom
     ]
 
     # UVs
     uvs = [[0, 0], [1, 0], [1, 1], [0, 1]] * 6
 
-    # Indices (2 triangles per face)
-    indices = []
-    
-    # Helper to add quad indices with specific winding
-    def add_quad(base, flip=False):
-        if not flip:
-            # CCW: 0->1->2, 0->2->3
-            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
-        else:
-            # Flip to make it CCW if vertices are defined CW
-            # 0->2->1, 0->3->2
-            indices.extend([base, base + 2, base + 1, base, base + 3, base + 2])
-
-    # Front (Y+): BL->BR->TR->TL. CCW.
-    add_quad(0, flip=False)
-    
-    # Back (Y-): BR->BL->TL->TR (looking from back). 
-    # Vertices: 0(BR), 1(BL), 2(TL), 3(TR).
-    # 0->1 is Right->Left. CW.
-    add_quad(4, flip=True)
-    
-    # Top (Z+): BL->BR->TR->TL. CCW.
-    add_quad(8, flip=False)
-    
-    # Bottom (Z-): TL->TR->BR->BL (looking from bottom).
-    # Vertices: 0(TL), 1(TR), 2(BR), 3(BL).
-    # 0->1 is Left->Right. CCW?
-    # Wait. TL(-x, y), TR(x, y). Vector Right.
-    # TR->BR (x, y) -> (x, -y). Vector Down.
-    # Right x Down = Back (-Z).
-    # We want Normal -Z. So this is CCW for -Z?
-    # If normal is -Z, and we look from -Z (bottom), we want CCW.
-    # Vertices are defined looking from top?
-    # [-s, -s, -s] (BL), [s, -s, -s] (BR).
-    # Let's just flip it, my previous analysis said it was CW.
-    add_quad(12, flip=True)
-    
-    # Right (X+): BL->BR->TR->TL. CCW.
-    add_quad(16, flip=False)
-    
-    # Left (X-): BR->BL->TL->TR. CW.
-    add_quad(20, flip=True)
+    # Indices (CCW)
+    # 0, 1, 2, 0, 2, 3 pattern for each face
+    indices = [
+        # Front
+        0, 1, 2, 0, 2, 3,
+        # Back
+        4, 5, 6, 4, 6, 7,
+        # Left
+        8, 9, 10, 8, 10, 11,
+        # Right
+        12, 13, 14, 12, 14, 15,
+        # Top
+        16, 17, 18, 16, 18, 19,
+        # Bottom
+        20, 21, 22, 20, 22, 23
+    ]
 
     mesh.vertices = np.array(vertices, dtype=np.float32)
     mesh.normals = np.array(normals, dtype=np.float32)

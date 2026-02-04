@@ -43,6 +43,7 @@ class Eternae(Application):
         self.world_manager = WorldManager(self.world, self.db_manager, self.world_generator)
         self.player_manager = PlayerManager(self.world, self.input, self.physics, self.renderer)
         self.ai_manager = AIManager(self.db_manager, self.ai_generator)
+
         self.debug_manager = DebugManager(self.world, self.renderer, self.input, self.physics, self.ui)
         self.game_ui_manager = GameUIManager(self.ui, self.config)
         self.environment_manager = EnvironmentManager(self.world, self.renderer, self.world_manager)
@@ -72,6 +73,9 @@ class Eternae(Application):
         dialogue_system = DialogueSystem(self.ui)
         dialogue_system.ai_manager = self.ai_manager
         self.world.add_system(dialogue_system)
+        
+        # --- DIAGNOSTIC: LIGHTING TEST ---
+        self._setup_diagnostic_lighting()
 
     def _setup_database(self):
         """Initialize database connection."""
@@ -84,6 +88,57 @@ class Eternae(Application):
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         DatabaseSchema.create_tables(self.db_manager)
+
+    def _setup_diagnostic_lighting(self):
+        """Force a simple test case for lighting diagnostics."""
+        logger.info("=== DIAGNOSTIC LIGHTING SETUP ===")
+        from aurora_engine.rendering.light import DirectionalLight, AmbientLight
+        from aurora_engine.rendering.mesh import MeshRenderer, create_cube_mesh, create_plane_mesh
+        from aurora_engine.scene.transform import Transform
+        from aurora_engine.utils.math import quaternion_from_euler
+        from aurora_engine.physics.collider import Collider, BoxCollider
+        from aurora_engine.physics.rigidbody import StaticBody
+        import numpy as np
+
+        # 1. Ground Plane (Receiver)
+        ground = self.world.create_entity()
+        ground.add_component(Transform())
+        ground.get_component(Transform).set_world_position(np.array([0, 0, 0], dtype=np.float32))
+        ground.get_component(Transform).set_local_scale(np.array([20, 20, 1], dtype=np.float32))
+        ground.add_component(MeshRenderer(mesh=create_plane_mesh(), color=(0.5, 0.5, 0.5, 1.0)))
+        
+        # Add Physics so player stands on it (Size 20x20x0.1)
+        ground.add_component(Collider(BoxCollider(np.array([20.0, 20.0, 0.1], dtype=np.float32))))
+        ground.add_component(StaticBody())
+
+        # 2. Floating Cube (Caster)
+        cube = self.world.create_entity()
+        cube.add_component(Transform())
+        cube.get_component(Transform).set_world_position(np.array([2.0, 0.0, 2.0], dtype=np.float32))
+        # Rotate slightly to see shading
+        q_cube = quaternion_from_euler(np.radians(np.array([45.0, 45.0, 0.0], dtype=np.float32)))
+        cube.get_component(Transform).set_world_rotation(q_cube)
+        cube.add_component(MeshRenderer(mesh=create_cube_mesh(), color=(1.0, 0.2, 0.2, 1.0)))
+
+        # 3. Directional Light (Sun)
+        sun = self.world.create_entity()
+        sun.add_component(Transform())
+        sun.get_component(Transform).set_world_position(np.array([0, -10, 20], dtype=np.float32))
+        # Look down-forward (Pitch -60)
+        q_sun = quaternion_from_euler(np.radians(np.array([-60.0, 0.0, 0.0], dtype=np.float32)))
+        sun.get_component(Transform).set_world_rotation(q_sun)
+        
+        dlight = DirectionalLight(color=(1.0, 0.95, 0.8), intensity=1.5)
+        dlight.cast_shadows = True
+        dlight.shadow_map_size = 2048
+        dlight.shadow_film_size = 50.0 # Ensure it covers the scene
+        sun.add_component(dlight)
+
+        # 4. Weak Ambient Light
+        amb = self.world.create_entity()
+        amb.add_component(AmbientLight(color=(0.1, 0.1, 0.2), intensity=0.3))
+        
+        logger.info("Diagnostic Scene Created: Ground Plane, Red Cube, Sun (Shadows ON), Weak Ambient.")
 
     def update(self, dt: float, alpha: float):
         """Override update to update managers."""

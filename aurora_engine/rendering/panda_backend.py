@@ -44,8 +44,8 @@ class PandaBackend:
             
             # --- Memory Optimization ---
             # Cache models to disk to avoid reprocessing
-            model-cache-dir {os.path.abspath('.panda3d_cache')}
-            model-cache-textures 1
+            # model-cache-dir {os.path.abspath('.panda3d_cache')}
+            # model-cache-textures 1
             
             # Compress textures in RAM (Huge savings)
             compressed-textures 1
@@ -99,11 +99,19 @@ class PandaBackend:
             import simplepbr
             # simplepbr.init() automatically patches the loader
             # Enable shadows explicitly
-            simplepbr.init(enable_shadows=True, use_normal_maps=True)
+            # Use 4096 shadow map size for better quality
+            simplepbr.init(
+                enable_shadows=True, 
+                use_normal_maps=True,
+                shadow_bias=0.01, # Increased slightly
+                use_occlusion_maps=True,
+                msaa_samples=2
+            )
             has_simplepbr = True
             logger.info("Initialized simplepbr with shadows enabled")
         except ImportError:
             logger.warning("simplepbr not found. PBR materials might not look correct.")
+            has_simplepbr = False
 
         # Try patching loader for GLTF if simplepbr didn't do it (or just to be safe/explicit)
         # But avoid double patching if simplepbr already did it
@@ -118,6 +126,13 @@ class PandaBackend:
                     pass
             except ImportError:
                 logger.warning("panda3d-gltf not found. GLB models will not load.")
+
+            # Only enable auto shader if simplepbr is NOT present
+            if not has_simplepbr:
+                self.scene_graph.setShaderAuto()
+                logger.info("Enabled setShaderAuto() as fallback")
+            else:
+                logger.info("Skipping setShaderAuto() because simplepbr is active")
 
         # --- DEFAULT LIGHTING REMOVED ---
         # We rely on game systems (DayNightCycle) to provide lighting.

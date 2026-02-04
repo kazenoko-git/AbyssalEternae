@@ -16,6 +16,7 @@ from aurora_engine.rendering.mesh import MeshRenderer, create_plane_mesh
 from aurora_engine.physics.collider import MeshCollider, BoxCollider, Collider
 from aurora_engine.physics.rigidbody import StaticBody
 from aurora_engine.utils.profiler import profile_section
+from panda3d.core import Material
 
 from game.systems.world_generator import WorldGenerator
 from game.components.fade_in import FadeInEffect
@@ -263,6 +264,12 @@ class WorldManager:
             rx = region_data['coordinates_x'] * 100.0
             ry = region_data['coordinates_y'] * 100.0
             gt.set_world_position(np.array([rx, ry, 0], dtype=np.float32))
+            
+            # Create material for terrain
+            from aurora_engine.rendering.material import Material as EngineMaterial
+            # We can't easily use EngineMaterial here because it's not fully integrated with Panda's Material
+            # But we can rely on Renderer to apply a default Panda Material if none exists.
+            # However, to be safe, let's just rely on the Renderer's default material logic which we updated.
             
             ground.add_component(MeshRenderer(mesh=meshes['terrain'], color=(1.0, 1.0, 1.0, 1.0)))
             if fade_in: ground.add_component(FadeInEffect(duration=0.5))
