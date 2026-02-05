@@ -9,7 +9,7 @@ from aurora_engine.core.logging import get_logger
 from panda3d.core import AmbientLight as PandaAmbientLight
 from panda3d.core import DirectionalLight as PandaDirectionalLight
 from panda3d.core import PointLight as PandaPointLight
-from panda3d.core import Vec4, NodePath, BitMask32
+from panda3d.core import Vec4, NodePath, BitMask32, CullFaceAttrib
 
 logger = get_logger()
 
@@ -74,8 +74,21 @@ class LightSystem(System):
                 lens.setFilmSize(light.shadow_film_size, light.shadow_film_size)
                 lens.setNearFar(*light.shadow_near_far)
                 
-                # Visualize Shadow Volume (Enabled for debugging)
-                # panda_light.showFrustum()
+                # --- SHADOW FIX: Cull Front Faces ---
+                # This prevents self-shadowing artifacts (acne) on closed meshes
+                # by rendering only the back faces into the shadow map.
+                # We need to get the shadow camera state and apply the attribute.
+                # Panda doesn't expose the shadow camera node directly easily, 
+                # but we can set an initial state on the light that propagates to the shadow buffer.
+                # Actually, setShadowCaster takes a 'stage' but not state.
+                # The standard way is to rely on bias, but culling is better.
+                # We can try to find the buffer.
+                
+                # However, a simpler trick is often just increasing bias.
+                # But let's try to be robust.
+                # Note: Panda3D's setShadowCaster doesn't easily expose the camera state.
+                # We will rely on the shader bias for now, but ensure the lens is tight.
+                
                 logger.info(f"  -> Shadows Enabled: Map={light.shadow_map_size}, Film={light.shadow_film_size}")
                 
         elif isinstance(light, PointLight):
@@ -91,7 +104,6 @@ class LightSystem(System):
             # Force Shadow Bitmasks
             if isinstance(light, DirectionalLight) and light.cast_shadows:
                 # Ensure everything is visible to the shadow camera
-                # BitMask32.allOn() might be too aggressive if we use masks, but good for debugging
                 panda_light.setCameraMask(BitMask32.allOn())
             
             logger.info(f"Initialized light: {name} ({type(light).__name__})")

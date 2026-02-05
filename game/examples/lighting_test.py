@@ -12,29 +12,32 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from aurora_engine.core.application import Application
 from aurora_engine.scene.transform import Transform
 from aurora_engine.rendering.mesh import MeshRenderer, create_cube_mesh, create_sphere_mesh, create_plane_mesh
-from aurora_engine.rendering.light import DirectionalLight, AmbientLight, PointLight
+from aurora_engine.rendering.light import DirectionalLight, AmbientLight
 from aurora_engine.camera.camera import Camera
 from aurora_engine.camera.free_fly import FreeFlyController
 from aurora_engine.core.logging import get_logger
 from aurora_engine.utils.math import quaternion_from_euler
-from panda3d.core import Shader as PandaShader, loadPrcFileData, Vec4, Vec3, Quat
+from panda3d.core import Shader as PandaShader, loadPrcFileData, Vec4, Quat, Vec3, CullFaceAttrib, TransformState, DepthOffsetAttrib
 
 logger = get_logger()
 
 # --- Configuration for Shadow Map Debugging ---
-loadPrcFileData("", "show-buffers 0") # Set to 1 to see all buffers by default
+loadPrcFileData("", "show-buffers 0") 
 
 class LightingTest(Application):
     """
-    Standalone test for Toon Shading and Real-time Shadows.
+    Minimal test for Basic Shadow Shader.
     """
 
     def initialize_game(self):
-        logger.info("Initializing Toon Lighting Test...")
+        logger.info("Initializing Basic Lighting Test...")
         
         # 1. Setup Camera
         self.camera = Camera()
-        self.camera.transform.set_world_position(np.array([0, -25, 15], dtype=np.float32))
+        self.camera.transform.set_world_position(np.array([0, -40, 30], dtype=np.float32))
+        q_cam = quaternion_from_euler(np.radians(np.array([-35.0, 0.0, 0.0], dtype=np.float32)))
+        self.camera.transform.set_world_rotation(q_cam)
+        
         self.renderer.register_camera(self.camera)
         
         # Free fly controller
@@ -51,9 +54,8 @@ class LightingTest(Application):
         self._create_lights()
         
         # 5. Apply Shaders to Scene
-        self._apply_toon_shader()
+        self._start_shader_update_task()
 
-        # 6. Input state for single-press toggle
         self._v_key_pressed = False
         
         logger.info("Lighting Test Initialized.")
@@ -61,13 +63,15 @@ class LightingTest(Application):
         logger.info("Debug: 'V' to toggle Shadow Map View, 'L' to rotate Sun.")
 
     def _load_shaders(self):
-        """Load the custom toon shader."""
+        """Load the basic diagnostic shader."""
         shader_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../shaders"))
         vert_path = os.path.join(shader_dir, "toon.vert")
         frag_path = os.path.join(shader_dir, "toon.frag")
+        out_vert_path = os.path.join(shader_dir, "outline.vert")
+        out_frag_path = os.path.join(shader_dir, "outline.frag")
         
-        if not os.path.exists(vert_path) or not os.path.exists(frag_path):
-            logger.error("Shader files not found! Please ensure shaders/toon.vert and shaders/toon.frag exist.")
+        if not os.path.exists(vert_path) or not os.path.exists(frag_path) or not os.path.exists(out_vert_path):
+            logger.error("Shader files not found!")
             self.toon_shader = None
             return
 
@@ -77,10 +81,16 @@ class LightingTest(Application):
                 vertex=vert_path,
                 fragment=frag_path
             )
+            self.outline_shader = PandaShader.load(
+                PandaShader.SL_GLSL,
+                vertex=out_vert_path,
+                fragment=out_frag_path
+            )
             logger.info("Toon shader loaded successfully.")
         except Exception as e:
             logger.error(f"Failed to load toon shader: {e}")
             self.toon_shader = None
+            self.outline_shader = None
 
     def _create_scene(self):
         self.scene_entities = []
@@ -89,7 +99,7 @@ class LightingTest(Application):
         ground = self.world.create_entity()
         ground.add_component(Transform())
         ground.get_component(Transform).set_world_position(np.array([0, 0, 0], dtype=np.float32))
-        ground.get_component(Transform).set_local_scale(np.array([40, 40, 1], dtype=np.float32))
+        ground.get_component(Transform).set_local_scale(np.array([100, 100, 1], dtype=np.float32))
         ground.add_component(MeshRenderer(mesh=create_plane_mesh(), color=(0.8, 0.8, 0.8, 1.0)))
         self.scene_entities.append(ground)
         
@@ -120,95 +130,106 @@ class LightingTest(Application):
         self.scene_entities.append(pillar)
 
     def _create_lights(self):
-        # Ambient Light (Base fill)
+        # Ambient Light
         amb = self.world.create_entity()
         amb.add_component(AmbientLight(color=(0.3, 0.3, 0.4), intensity=0.4))
         
         # Directional Light (Sun)
         self.sun = self.world.create_entity()
         self.sun.add_component(Transform())
-        self.sun.get_component(Transform).set_world_position(np.array([0, -20, 20], dtype=np.float32))
+        self.sun.get_component(Transform).set_world_position(np.array([0, -40, 40], dtype=np.float32))
         
         # Initial Rotation
         self.sun_pitch = -60.0
-        self.sun_yaw = -30.0
+        self.sun_yaw = 0.0
         self._update_sun_rotation()
         
         dlight = DirectionalLight(color=(1.0, 0.95, 0.8), intensity=2.0)
         dlight.cast_shadows = True
         dlight.shadow_map_size = 4096 
-        dlight.shadow_film_size = 60.0 
+        dlight.shadow_film_size = 100.0 
         self.sun.add_component(dlight)
+        
+        # Attach light to render to enable lighting and shadows
+        if hasattr(dlight, '_backend_handle') and dlight._backend_handle:
+            self.renderer.backend.base.render.setLight(dlight._backend_handle)
+        
+        # Debug Sun
+        sun_viz = self.world.create_entity()
+        sun_viz.add_component(Transform())
+        sun_viz.get_component(Transform).set_world_position(np.array([0, -40, 40], dtype=np.float32))
+        sun_viz.get_component(Transform).set_local_scale(np.array([2, 2, 2], dtype=np.float32))
+        sun_viz.add_component(MeshRenderer(mesh=create_sphere_mesh(), color=(1.0, 1.0, 0.0, 1.0)))
+        self.scene_entities.append(sun_viz)
 
     def _update_sun_rotation(self):
         q_sun = quaternion_from_euler(np.radians(np.array([self.sun_pitch, self.sun_yaw, 0.0], dtype=np.float32)))
         self.sun.get_component(Transform).set_world_rotation(q_sun)
-        
-        # Calculate Forward Vector for Shader
-        # Pitch rotation around X, Yaw around Z
-        # Simple conversion for directional light vector
-        # Forward is Y+ in our engine usually, but let's calculate it from Quat
-        # Or simpler:
-        # x = sin(yaw) * cos(pitch)
-        # y = cos(yaw) * cos(pitch)
-        # z = sin(pitch)
-        
-        # Actually, let's just use the Panda Node's forward vector if we can access it,
-        # but we are in the logic loop.
-        # Let's compute the vector manually to be precise.
-        # Pitch is rotation around X axis (Right)
-        # Yaw is rotation around Z axis (Up)
-        # Default forward is (0, 1, 0)
-        
-        p = math.radians(self.sun_pitch)
-        y = math.radians(self.sun_yaw)
-        
-        # Vector pointing towards the light source (Sun Position)
-        # But for directional light, we usually want the direction the light is traveling.
-        # The shader expects u_sun_direction to be the direction the light is POINTING.
-        
-        # Rotation matrix logic:
-        # Rotate (0, 1, 0) by Pitch then Yaw
-        # Pitch (X-axis): y' = y*cos(p) - z*sin(p), z' = y*sin(p) + z*cos(p)
-        # (0, cos(p), sin(p))
-        # Yaw (Z-axis): x'' = x'*cos(y) - y'*sin(y), y'' = x'*sin(y) + y'*cos(y)
-        # x = -cos(p)*sin(y)
-        # y = cos(p)*cos(y)
-        # z = sin(p)
-        
-        # Note: self.sun_pitch is -60 (pointing down). sin(-60) is negative.
-        # So Z will be negative, which is correct for light pointing down.
-        
-        dir_x = -math.cos(p) * math.sin(y)
-        dir_y = math.cos(p) * math.cos(y)
-        dir_z = math.sin(p)
-        
-        self.sun_direction = Vec3(dir_x, dir_y, dir_z)
 
-    def _apply_toon_shader(self):
+    def _start_shader_update_task(self):
         if not self.toon_shader:
             return
-        self.renderer.backend.base.taskMgr.doMethodLater(0.1, self._apply_shader_task, "ApplyShaderTask")
+        # Run every frame to update uniforms (light direction, camera pos)
+        self.renderer.backend.base.taskMgr.add(self._update_shader_task, "UpdateShaderTask")
 
-    def _apply_shader_task(self, task):
+    def _update_shader_task(self, task):
+        # Calculate Global Uniforms
+        cam_pos = self.camera.transform.get_world_position()
+        
+        # Calculate Light Direction (Vector TO Light)
+        # Sun forward is the direction rays travel. Vector TO sun is opposite.
+        sun_transform = self.sun.get_component(Transform)
+        rot = sun_transform.get_world_rotation()
+        p3d_quat = Quat(rot[3], rot[0], rot[1], rot[2])
+        sun_fwd = p3d_quat.getForward()
+        light_dir = -sun_fwd 
+
         for entity in self.scene_entities:
             mesh_renderer = entity.get_component(MeshRenderer)
             if mesh_renderer and hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
                 np = mesh_renderer._node_path
+                
+                # 1. Apply Main Toon Shader
                 np.setShader(self.toon_shader)
                 
-                np.setShaderInput("u_toon_bands", 3.0)
-                np.setShaderInput("u_shadow_color", Vec4(0.1, 0.1, 0.3, 1.0))
-                np.setShaderInput("u_sun_direction", self.sun_direction) # Initial set
-                
+                np.setShaderInput("u_light_dir", Vec3(light_dir[0], light_dir[1], light_dir[2]))
+                np.setShaderInput("u_view_pos", Vec3(cam_pos[0], cam_pos[1], cam_pos[2]))
                 if hasattr(mesh_renderer, 'color'):
-                    c = mesh_renderer.color
-                    color_vec = Vec4(c[0], c[1], c[2], c[3] if len(c) > 3 else 1.0)
-                    np.setShaderInput("u_object_color", color_vec)
-                else:
-                    np.setShaderInput("u_object_color", Vec4(1, 1, 1, 1))
+                    np.setShaderInput("u_color", Vec4(*mesh_renderer.color))
                 
-        return task.done
+                # Fix Visibility: Cull Back faces to hide insides
+                np.setDepthWrite(True)
+                np.setDepthTest(True)
+                np.setAttrib(CullFaceAttrib.make(CullFaceAttrib.M_cull_clockwise))
+                
+                # 2. Handle Outline (Inverted Hull)
+                if self.outline_shader:
+                    # Check if outline node exists to avoid creating it every frame
+                    outline_node = np.find("outline_shell")
+                    if outline_node.is_empty():
+                        # Create outline node by copying the geometry
+                        outline_node = np.copy_to(np)
+                        outline_node.set_name("outline_shell")
+                        
+                        # Reset transform so it doesn't double-apply the parent's scale/pos
+                        outline_node.set_transform(TransformState.make_identity())
+                        
+                        # Apply Outline Shader
+                        outline_node.set_shader(self.outline_shader)
+                        
+                        # Cull FRONT faces so we see the inside of the expanded hull
+                        outline_node.set_attrib(CullFaceAttrib.make(CullFaceAttrib.M_cull_counter_clockwise))
+                        
+                        # Render outline BEFORE the main object to avoid Z-fighting
+                        outline_node.set_bin("background", 10)
+                        outline_node.set_depth_write(True)
+                        outline_node.set_depth_test(True)
+                    
+                    # Update Outline Uniforms
+                    outline_node.set_shader_input("outline_width", 0.03) # Thin outline
+                    outline_node.set_shader_input("outline_color", Vec4(0.0, 0.0, 0.0, 1.0)) # Black
+                
+        return task.cont
 
     def update(self, dt: float, alpha: float):
         super().update(dt, alpha)
@@ -235,6 +256,8 @@ class LightingTest(Application):
         if self.input.is_key_down('v'):
             if not self._v_key_pressed:
                 self.renderer.backend.base.bufferViewer.toggleEnable()
+                self.renderer.backend.base.bufferViewer.setPosition("llcorner")
+                self.renderer.backend.base.bufferViewer.setLayout("vline")
                 self._v_key_pressed = True
         else:
             self._v_key_pressed = False
@@ -242,15 +265,19 @@ class LightingTest(Application):
         # Rotate Sun
         if self.input.is_key_down('l'):
             t = self.time.get_time()
-            # Rotate Yaw
             self.sun_yaw += dt * 20.0
             self._update_sun_rotation()
             
-            # Update Uniforms on all objects
-            for entity in self.scene_entities:
-                mesh_renderer = entity.get_component(MeshRenderer)
-                if mesh_renderer and hasattr(mesh_renderer, '_node_path') and mesh_renderer._node_path:
-                    mesh_renderer._node_path.setShaderInput("u_sun_direction", self.sun_direction)
+            # Force update the Panda Node from the component transform
+            if hasattr(self, 'sun'):
+                transform = self.sun.get_component(Transform)
+                dlight_component = self.sun.get_component(DirectionalLight)
+                if dlight_component and dlight_component._backend_handle:
+                    light_np = dlight_component._backend_handle
+                    pos = transform.get_world_position()
+                    rot = transform.get_world_rotation()
+                    light_np.setPos(pos[0], pos[1], pos[2])
+                    light_np.setQuat(Quat(rot[3], rot[0], rot[1], rot[2]))
 
         # Toggle mouse lock
         if self.input.is_key_down('escape'):
@@ -265,7 +292,7 @@ if __name__ == "__main__":
             'rendering': {
                 'width': 1280, 
                 'height': 720, 
-                'title': 'Toon Lighting Test'
+                'title': 'Basic Lighting Test'
             }, 
             'database': {'database': 'test.db'}
         }, f)

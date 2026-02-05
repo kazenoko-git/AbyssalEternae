@@ -1,49 +1,43 @@
 #version 150
 
-// Panda3D-provided uniforms
-uniform mat4 p3d_ModelViewProjectionMatrix;
-uniform mat4 p3d_ModelMatrix;
-uniform mat3 p3d_NormalMatrix; // View Space Normal Matrix (Unused now)
+// Panda3D Standard Uniforms
+ uniform mat4 p3d_ModelMatrix;
+ uniform mat4 p3d_ModelViewProjectionMatrix;
+ uniform mat3 p3d_NormalMatrix;
 
-// Full Panda3D LightSource struct definition
-uniform struct p3d_LightSourceParameters {
-    vec4 color;
-    vec4 ambient;
-    vec4 diffuse;
-    vec4 specular;
-    vec4 position;
-    vec3 spotDirection;
-    float spotExponent;
-    float spotCutoff;
-    float spotCosCutoff;
-    vec3 attenuation;
-    sampler2DShadow shadowMap;
-    mat4 shadowViewMatrix;
-} p3d_LightSource[1];
+ // Light Struct for Shadow Matrix
+ struct p3d_LightSourceParameters {
+     vec4 color;
+     vec4 ambient;
+     vec4 diffuse;
+     vec4 specular;
+     vec4 position;
+     vec3 spotDirection;
+     float spotExponent;
+     float spotCutoff;
+     float spotCosCutoff;
+     vec3 attenuation;
+     sampler2DShadow shadowMap;
+     mat4 shadowViewMatrix;
+ };
+ uniform p3d_LightSourceParameters p3d_LightSource[1];
 
-// Vertex attributes
-in vec4 p3d_Vertex;
-in vec3 p3d_Normal;
+ // Vertex Inputs
+ in vec4 p3d_Vertex;
+ in vec3 p3d_Normal;
 
-// Outputs to fragment shader
-out vec3 v_world_pos;
-out vec3 v_world_normal;
-out vec4 v_shadow_coord;
+ // Outputs
+ out vec3 v_world_normal;
+ out vec4 v_world_pos;
+ out vec4 v_shadow_pos;
 
-void main() {
-    // Clip Space Position
-    gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+ void main() {
+     v_world_pos = p3d_ModelMatrix * p3d_Vertex;
+    v_world_normal = normalize(mat3(p3d_ModelMatrix) * p3d_Normal);
 
-    // World Space Position
-    v_world_pos = (p3d_ModelMatrix * p3d_Vertex).xyz;
+     // Calculate Shadow Coordinate
+     // shadowViewMatrix transforms from World Space to Shadow Clip Space
+     v_shadow_pos = p3d_LightSource[0].shadowViewMatrix * v_world_pos;
 
-    // World Space Normal
-    // We use the Model Matrix to rotate the normal into the world.
-    // Note: For non-uniform scaling, we strictly need the Inverse Transpose,
-    // but for this toon style and simple shapes, this approximation is stable and prevents view-dependent artifacts.
-    v_world_normal = normalize((p3d_ModelMatrix * vec4(p3d_Normal, 0.0)).xyz);
-
-    // Shadow Coordinates
-    // Transforms World Position -> Light's Clip Space
-    v_shadow_coord = p3d_LightSource[0].shadowViewMatrix * vec4(v_world_pos, 1.0);
-}
+     gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+ }
