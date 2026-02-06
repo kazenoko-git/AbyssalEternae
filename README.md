@@ -14,7 +14,7 @@ A 3D stylized procedural RPG built in Python using a customised fork of Panda3D
 ## Tech Stack
 - Python
 - Aurora Engine (fork of Panda3D)
-- SQL Connector
+- SQLite
 
 ## Status
 Early development prototype.
