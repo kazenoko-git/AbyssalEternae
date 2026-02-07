@@ -1,0 +1,10 @@
+{
+    "rendering": {
+        "width": 1600,
+        "height": 900,
+        "title": "Hybrid Lighting & Shading Test"
+    },
+    "database": {
+        "database": "test.db"
+    }
+}
