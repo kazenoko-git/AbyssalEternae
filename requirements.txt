@@ -3,3 +3,4 @@ noise~=1.2.2
 Panda3D~=1.10.16
 panda3d-gltf
 panda3d-simplepbr
+numpy

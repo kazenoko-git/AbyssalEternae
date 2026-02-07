@@ -1,105 +1,106 @@
 #version 150
+/*
+ * CHARACTER SHADER (Toon / Cel)
+ *
+ * - Uses quantized lighting to create distinct "bands" of light and shadow.
+ * - Receives hard-edged real-time shadows from the global shadow map.
+ * - Adds a Fresnel-based rim light for a classic anime look.
+ */
 
+// Inputs from Vertex Shader
 in vec3 v_world_normal;
 in vec4 v_world_pos;
-in vec4 v_shadow_pos;
+in vec4 v_shadow_pos; // Position of the fragment in light space
 
-uniform vec4 u_color;
-uniform vec3 u_light_dir; // Direction TO the light source (World Space)
-uniform vec3 u_view_pos;  // Camera Position (World Space)
-uniform vec3 u_ambient_color; // Ambient light color
-
-struct p3d_LightSourceParameters {
+// Panda3D-provided Uniforms (via setShaderAuto)
+uniform mat4 p3d_CameraMatrix; // Inverse of the view matrix
+uniform struct p3d_LightSourceParameters {
     vec4 color;
     vec4 ambient;
-    vec4 diffuse;
-    vec4 specular;
-    vec4 position;
-    vec3 spotDirection;
-    float spotExponent;
-    float spotCutoff;
-    float spotCosCutoff;
-    vec3 attenuation;
     sampler2DShadow shadowMap;
     mat4 shadowViewMatrix;
-};
-uniform p3d_LightSourceParameters p3d_LightSource[1];
+    vec4 position;
+} p3d_LightSource[1];
+
+// Per-Mesh Uniforms
+uniform vec4 u_color;
+uniform bool receive_shadows;
 
 out vec4 fragColor;
 
-void main() {
-    vec3 N = normalize(v_world_normal);
-    vec3 L = normalize(u_light_dir);
+// --- Shadow Calculation (Hard Edge) ---
+float calculate_shadow_factor() {
+    if (!receive_shadows) {
+        return 1.0;
+    }
 
-    // Standard Diffuse
+    vec3 shadow_coord = v_shadow_pos.xyz / v_shadow_pos.w;
+    shadow_coord = shadow_coord * 0.5 + 0.5;
+    
+    if (shadow_coord.z > 1.0) {
+        return 1.0;
+    }
+
+    // A single texture lookup on a sampler2DShadow performs the depth test.
+    // This gives a hard 0.0 or 1.0 value, perfect for toon shading.
+    float bias = 0.002;
+    return texture(p3d_LightSource[0].shadowMap, vec3(shadow_coord.xy, shadow_coord.z - bias));
+}
+
+
+void main() {
+    // --- 1. Get Material & Lighting Properties ---
+    vec3 N = normalize(v_world_normal);
+    vec3 L = normalize(p3d_LightSource[0].position.xyz);
+    vec3 V = normalize(p3d_CameraMatrix[3].xyz - v_world_pos.xyz); // Eye vector
+
+    vec3 base_color = u_color.rgb;
+    vec3 ambient_light = p3d_LightSource[0].ambient.rgb;
+    vec3 directional_light = p3d_LightSource[0].color.rgb;
+
+    // --- 2. Calculate Toon Lighting ---
+    
+    // Toon/Cel shading is achieved by quantizing the diffuse intensity.
+    // The dot product gives a smooth gradient, which we force into discrete steps.
     float NdotL = dot(N, L);
 
-    // Shadow Calculation
-    // Apply bias to prevent shadow acne
-    float bias = 0.002;
-    vec4 shadow_coord = v_shadow_pos;
-    shadow_coord.z -= bias * shadow_coord.w;
+    // Remap NdotL from [-1, 1] to [0, 1]
+    float light_intensity = (NdotL * 0.5) + 0.5;
 
-    float shadow = textureProj(p3d_LightSource[0].shadowMap, shadow_coord);
+    // Define the number of toon bands
+    const float num_bands = 3.0;
+    
+    // Quantize the intensity
+    // The floor() function is what creates the distinct, hard-edged bands.
+    float quantized_intensity = floor(light_intensity * num_bands) / num_bands;
 
-    // Toon Quantization (Cel Shading)
-    // We use the raw NdotL for the bands, but we MASK it with the shadow.
-    // This ensures shadows cut cleanly across the bands.
+    // Add a minimum brightness to the lit part to prevent it from being black
+    quantized_intensity = max(quantized_intensity, 0.1);
 
-    // Remap NdotL to [0, 1] for easier banding logic if desired,
-    // but standard [-1, 1] is fine if we check > 0.
 
-    // Smoothstep for anti-aliased bands
-    float lightVal = NdotL;
+    // --- 3. Calculate Shadows ---
+    float shadow_factor = calculate_shadow_factor();
 
-    // Band 1: Light / Shadow boundary
-    // We multiply by shadow here so the shadow forces the pixel into the darkest band
-    float shadowMask = smoothstep(0.0, 0.01, shadow);
 
-    // Calculate intensity based on bands
-    float intensity = 0.0;
+    // --- 4. Calculate Rim Light (Fresnel) ---
+    // This adds a highlight to the edges of the model, separating it from the background.
+    float rim_dot = 1.0 - dot(V, N);
+    // Use smoothstep for a clean, controllable rim effect.
+    float rim_amount = smoothstep(0.6, 1.0, rim_dot);
+    // The rim should not appear in deep shadow.
+    rim_amount *= shadow_factor; 
+    vec3 rim_color = directional_light * rim_amount * 0.7; // Rim is usually less intense
 
-    // High light
-    float band1 = smoothstep(0.6, 0.65, lightVal);
-    // Mid light
-    float band2 = smoothstep(0.0, 0.05, lightVal);
 
-    // Composite bands
-    // If shadow is 0, we want the darkest color (ambient)
-    // If shadow is 1, we respect the bands
-
-    // Base ambient level for characters (usually higher than terrain to pop)
-    float ambientLevel = 0.4;
-
-    // Mix based on bands
-    // 1.0 = Full Bright
-    // 0.6 = Mid Tone
-    // 0.0 = Shadow Tone
-
-    float litFactor = (band1 * 0.4) + (band2 * 0.6);
-
-    // Apply shadow: if shadowed, litFactor drops to 0
-    litFactor *= shadow;
-
-    // Final intensity is ambient + lit
-    intensity = ambientLevel + litFactor;
-
-    // Rim Light (Fresnel)
-    vec3 V = normalize(u_view_pos - v_world_pos.xyz);
-    float NdotV = dot(N, V);
-    float rim = 1.0 - max(NdotV, 0.0);
-
-    // Sharp rim
-    rim = smoothstep(0.6, 0.7, rim);
-
-    // Rim should only appear on the lit side or be masked?
-    // Anime style often puts rim on the dark side to separate from background.
-    // But usually we want it masked by self-shadowing if it's a light-rim.
-    // Let's keep it simple: Rim is additive, but maybe weaker in shadow.
-    rim *= 0.5;
-
-    vec3 lightColor = p3d_LightSource[0].color.rgb;
-    vec3 finalColor = (u_color.rgb * intensity * lightColor) + (rim * lightColor * 0.5);
-
-    fragColor = vec4(finalColor, u_color.a);
+    // --- 5. Combine Lighting, Shadows, and Rim ---
+    
+    // The final diffuse component is the directional light multiplied by the
+    // toon intensity, and then fully masked by the hard shadow.
+    vec3 diffuse = directional_light * quantized_intensity * shadow_factor;
+    
+    vec3 final_lighting = ambient_light + diffuse + rim_color;
+    
+    vec3 final_color = base_color * final_lighting;
+    
+    fragColor = vec4(final_color, u_color.a);
 }
