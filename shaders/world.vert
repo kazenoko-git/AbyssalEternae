@@ -4,11 +4,22 @@
 uniform mat4 p3d_ModelMatrix;
 uniform mat4 p3d_ModelViewProjectionMatrix;
 
-// Light information passed manually from the application
-uniform struct p3d_LightSourceParameters {
+// Panda3D Light Source Struct
+struct p3d_LightSourceParameters {
+    vec4 color;
+    vec4 ambient;
+    vec4 diffuse;
+    vec4 specular;
+    vec4 position;
+    vec3 spotDirection;
+    float spotExponent;
+    float spotCutoff;
+    float spotCosCutoff;
+    vec3 attenuation;
+    sampler2DShadow shadowMap;
     mat4 shadowViewMatrix;
-    // other fields are not needed in the vertex shader
-} u_directional_light;
+};
+uniform p3d_LightSourceParameters p3d_LightSource[1];
 
 // Vertex Inputs
 in vec4 p3d_Vertex;
@@ -20,11 +31,12 @@ out vec4 v_world_pos;
 out vec4 v_shadow_pos;
 
 void main() {
-    v_world_pos = p3d_ModelMatrix * p3d_Vertex;
+    vec4 world_pos = p3d_ModelMatrix * p3d_Vertex;
+    v_world_pos = world_pos;
     v_world_normal = normalize(mat3(p3d_ModelMatrix) * p3d_Normal);
 
     // Calculate Shadow Coordinate using the manually passed light matrix
-    v_shadow_pos = u_directional_light.shadowViewMatrix * v_world_pos;
+    v_shadow_pos = p3d_LightSource[0].shadowViewMatrix * world_pos;
 
     gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
 }

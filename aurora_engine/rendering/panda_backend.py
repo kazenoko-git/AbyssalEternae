@@ -294,6 +294,8 @@ class PandaBackend:
 
         except ImportError as e:
             logger.warning(f"Could not import gltf module for patching: {e}")
+        except AttributeError as e:
+            logger.warning(f"Failed to patch gltf loader (AttributeError): {e}")
         except Exception as e:
             logger.warning(f"Failed to patch gltf loader: {e}")
 

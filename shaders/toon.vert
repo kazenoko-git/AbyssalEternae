@@ -5,8 +5,7 @@ uniform mat4 p3d_ModelViewProjectionMatrix;
 uniform mat4 p3d_ModelMatrix;
 uniform mat3 p3d_NormalMatrix; // View Space Normal Matrix (Unused now)
 
-// Full Panda3D LightSource struct definition
-uniform struct p3d_LightSourceParameters {
+struct p3d_LightSourceParameters {
     vec4 color;
     vec4 ambient;
     vec4 diffuse;
@@ -19,7 +18,8 @@ uniform struct p3d_LightSourceParameters {
     vec3 attenuation;
     sampler2DShadow shadowMap;
     mat4 shadowViewMatrix;
-} p3d_LightSource[1];
+};
+uniform p3d_LightSourceParameters p3d_LightSource[1];
 
 // Vertex attributes
 in vec4 p3d_Vertex;
@@ -35,7 +35,8 @@ void main() {
     gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
 
     // World Space Position
-    v_world_pos = (p3d_ModelMatrix * p3d_Vertex).xyz;
+    vec4 world_pos_4 = p3d_ModelMatrix * p3d_Vertex;
+    v_world_pos = world_pos_4.xyz;
 
     // World Space Normal
     // We use the Model Matrix to rotate the normal into the world.
@@ -45,5 +46,5 @@ void main() {
 
     // Shadow Coordinates
     // Transforms World Position -> Light's Clip Space
-    v_shadow_coord = p3d_LightSource[0].shadowViewMatrix * vec4(v_world_pos, 1.0);
+    v_shadow_coord = p3d_LightSource[0].shadowViewMatrix * world_pos_4;
 }

@@ -1,6 +1,11 @@
 # game/main.py
 
 import os
+import sys
+
+# Add the project root to the Python path to enable imports from 'aurora_engine'.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import json
 import numpy as np
 

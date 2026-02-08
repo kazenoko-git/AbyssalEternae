@@ -8,12 +8,12 @@
  */
 
 // --- UNIFORMS ---
-uniform struct p3d_LightSourceParameters {
+struct p3d_LightSourceParameters {
     vec4 color;
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
-    vec4 position; // View Space Position (Usually) - BUT we need World Space
+    vec4 position;
     vec3 spotDirection;
     float spotExponent;
     float spotCutoff;
@@ -21,11 +21,8 @@ uniform struct p3d_LightSourceParameters {
     vec3 attenuation;
     sampler2DShadow shadowMap;
     mat4 shadowViewMatrix;
-} p3d_LightSource[1];
-
-uniform struct p3d_LightModelParameters {
-    vec4 ambient;
-} p3d_LightModel;
+};
+uniform p3d_LightSourceParameters p3d_LightSource[1];
 
 uniform vec3 p3d_CameraPosition;
 
@@ -34,6 +31,8 @@ uniform vec4 u_object_color;
 uniform float u_toon_bands;
 uniform vec4 u_shadow_color;
 uniform vec3 u_sun_direction; // Explicit World Space Sun Direction
+uniform vec4 u_sun_color;
+uniform vec4 u_ambient_color;
 
 // Inputs
 in vec3 v_world_pos;
@@ -67,11 +66,14 @@ float get_shadow_factor(vec4 shadow_coord, float bias) {
 }
 
 void main() {
+    // Prevent optimization of v_world_pos
+    if (v_world_pos.x > 100000.0) discard;
+
     vec3 N = normalize(v_world_normal);
 
     // Use Explicit World Space Sun Direction passed from Python
     // This avoids any confusion with Panda's View-Space light positions
-    vec3 L = normalize(-u_sun_direction);
+    vec3 L = normalize(u_sun_direction);
 
     // --- 1. DIFFUSE TERM ---
     float NdotL = dot(N, L);
@@ -93,7 +95,7 @@ void main() {
     vec3 obj_color = u_object_color.rgb;
     if (length(obj_color) < 0.01) obj_color = vec3(1.0, 0.0, 1.0);
 
-    vec3 light_color = p3d_LightSource[0].color.rgb;
+    vec3 light_color = u_sun_color.rgb;
     if (length(light_color) < 0.01) light_color = vec3(1.0);
 
     vec3 lit_color = obj_color * light_color;
@@ -112,10 +114,13 @@ void main() {
     // Actually, for pure 2-tone, we just want Lit vs Shadow.
     // Let's stick to the mix based on shadow * diffuse.
 
-    // Re-enable smoothstep for the terminator itself, but keep it tight
-    mix_factor = smoothstep(0.0, 0.05, final_light_factor);
+    // Soften the transition (Fade)
+    mix_factor = smoothstep(0.0, 0.35, final_light_factor);
 
     vec3 final_color = mix(shadow_color, lit_color, mix_factor);
+
+    // FORCE USAGE: Add a tiny fraction of shadow coord to color
+    final_color += v_shadow_coord.rgb * 0.000001;
 
     fragColor = vec4(final_color, u_object_color.a);
 }
